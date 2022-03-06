@@ -1,0 +1,3 @@
+[submodule "lib/heatshrink"]
+	path = libesphttpd
+	url = https://github.com/slacky1965/libesphttpd.git
