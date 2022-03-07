@@ -41,74 +41,98 @@ HttpdBuiltInUrl builtInUrls[]={
         {NULL, NULL, NULL}
 };
 
+typedef struct {
+    FIL fp;
+    char token[64];
+    int token_pos;
+} html_data_t;
+
 static int webserver_read_file(HttpdConnData *connData) {
 
-    char *send_buff = NULL, *subst_token = NULL, token[32], buff[OTA_BUF_LEN + 1];
-    size_t size;
-    int i, pos_token, send_len = 0;
+    char buff[OTA_BUF_LEN + 1];
+    size_t len;
+    FRESULT ret;
 
-    sprintf(buff, "%s%s", webserver_html_path, req->uri);
+    html_data_t *html_data = connData->cgiData;
 
-    FILE *f = fopen(buff, "rb");
-    if (f == NULL) {
-        ESP_LOGE(TAG, "Cannot open file %s", buff);
-        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Not Found");
-        return ESP_FAIL;
+
+    if (connData->conn==NULL) {
+        //Connection aborted. Clean up.
+        f_close(&(html_data->fp));
+        free(html_data);
+        return HTTPD_CGI_DONE;
     }
 
-    char *type = http_content_type(buff);
-    httpd_resp_set_type(req, type);
+    if (html_data == NULL) {
+        //First call to this cgi. Open the file so we can read it.
+        html_data = os_malloc(sizeof(html_data_t));
+        if (html_data == NULL) {
+            return HTTPD_CGI_NOTFOUND;
+        }
+        os_sprintf(buff, "%s/%s", HTML_PATH, connData->url);
+        ret = f_open(&(html_data->fp), buff, FA_READ);
+//        tpd->tplArg=NULL;
+        html_data->token_pos = -1;
+        if (ret != FR_OK) {
+//            espFsClose(tpd->file);
+            free(html_data);
+            return HTTPD_CGI_NOTFOUND;
+        }
+        connData->cgiData=html_data;
+        httpdStartResponse(connData, 200);
+        httpdHeader(connData, "Content-Type", httpdGetMimetype(connData->url));
+        httpdEndHeaders(connData);
+        return HTTPD_CGI_MORE;
+    }
 
-    pos_token = -1;
-
-    do {
-        size = fread(buff, 1, sizeof(buff) - 1, f);
-        if (size > 0) {
-            send_len = 0;
-            send_buff = buff;
-            for (i = 0; i < size; i++) {
-                if (pos_token == -1) {
-                    if (buff[i] == '%') {
-                        if (send_len != 0)
-                            httpd_resp_send_chunk(req, send_buff, send_len);
-                        send_len = 0;
-                        pos_token = 0;
-                    } else {
-                        send_len++;
-                    }
+    ret = f_read(&(html_data->fp), buff, OTA_BUF_LEN, &len);
+    if (len>0) {
+        sp=0;
+        e=buff;
+        for (x=0; x<len; x++) {
+            if (tpd->tokenPos==-1) {
+                //Inside ordinary text.
+                if (buff[x]=='%') {
+                    //Send raw data up to now
+                    if (sp!=0) httpdSend(connData, e, sp);
+                    sp=0;
+                    //Go collect token chars.
+                    tpd->tokenPos=0;
                 } else {
-                    if (buff[i] == '%') {
-                        if (pos_token == 0) {
-                            //This is the second % of a %% escape string.
-                            //Send a single % and resume with the normal program flow.
-                            httpd_resp_send_chunk(req, "%", 1);
-                        } else {
-                            //This is an actual token.
-                            token[pos_token++] = 0; //zero-terminate token
-                            // Call function check token
-                            subst_token = webserver_subst_token_to_response(token);
-                            if (strlen(subst_token)) {
-                                httpd_resp_send_chunk(req, subst_token, strlen(subst_token));
-                            }
-                        }
-                        //Go collect normal chars again.
-                        send_buff = &buff[i + 1];
-                        pos_token = -1;
+                    sp++;
+                }
+            } else {
+                if (buff[x]=='%') {
+                    if (tpd->tokenPos==0) {
+                        //This is the second % of a %% escape string.
+                        //Send a single % and resume with the normal program flow.
+                        httpdSend(connData, "%", 1);
                     } else {
-                        if (pos_token < (sizeof(token) - 1))
-                            token[pos_token++] = buff[i];
+                        //This is an actual token.
+                        tpd->token[tpd->tokenPos++]=0; //zero-terminate token
+                        ((TplCallback)(connData->cgiArg))(connData, tpd->token, &tpd->tplArg);
                     }
+                    //Go collect normal chars again.
+                    e=&buff[x+1];
+                    tpd->tokenPos=-1;
+                } else {
+                    if (tpd->tokenPos<(sizeof(tpd->token)-1)) tpd->token[tpd->tokenPos++]=buff[x];
                 }
             }
         }
-        if (send_len != 0) {
-            httpd_resp_send_chunk(req, send_buff, send_len);
-        }
-    } while (size == sizeof(buff) - 1);
-
-    fclose(f);
-
-    return ESP_OK;
+    }
+    //Send remaining bit.
+    if (sp!=0) httpdSend(connData, e, sp);
+    if (len!=1024) {
+        //We're done.
+        ((TplCallback)(connData->cgiArg))(connData, NULL, &tpd->tplArg);
+        espFsClose(tpd->file);
+        free(tpd);
+        return HTTPD_CGI_DONE;
+    } else {
+        //Ok, till next time.
+        return HTTPD_CGI_MORE;
+    }
 }
 
 
