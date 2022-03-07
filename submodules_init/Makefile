@@ -8,6 +8,9 @@ submodules: $(SUBMODULES)
 $(SUBMODULES):
 	@echo No submodule
 	cd ..; git clone https://github.com/slacky1965/libesphttpd.git
+	mv ../libesphttpd/Makefile ../libesphttpd/Makefile.orig
+	cp Makefile.libesphttpd ../libesphttpd/Makefile
+	cp Makefile.libesphttpd.core ../libesphttpd/core/Makefile
 #	git submodule init
 #	git submodule update
 	
