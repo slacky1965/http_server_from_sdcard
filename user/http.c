@@ -16,6 +16,8 @@
 #define OTA_TAGNAME "generic"
 #endif
 
+#define RW_BUFF_LEN 1024
+
 CgiUploadFlashDef uploadParams={
     .type=CGIFLASH_TYPE_FW,
     .fw1Pos=0x1000,
@@ -35,60 +37,38 @@ CgiUploadFlashDef uploadParams={
 };
 
 int ICACHE_FLASH_ATTR tpl_token(HttpdConnData *connData, char *token, void **arg);
+typedef void (* TplCallback)(HttpdConnData *connData, char *token, void **arg);
 
-HttpdBuiltInUrl builtInUrls[]={
+HttpdBuiltInUrl builtInUrls[] = {
         {"/", cgiRedirect, "/index.html"},
         {"/upload/*", cgi_upload, &uploadParams},
+		{"/scripts.js", cgi_response, NULL},
         {"*", cgi_response, tpl_token},
         {NULL, NULL, NULL}
 };
 
 typedef struct {
     FIL file;
-    void *tplArg;
+    void *tpl_arg;
     char token[64];
     int token_pos;
 } html_data_t;
 
-typedef void (* TplCallback)(HttpdConnData *connData, char *token, void **arg);
+int ICACHE_FLASH_ATTR cgi_upload (HttpdConnData *connData) {
+    if (connData->conn==NULL) {
+        //Connection aborted. Clean up.
+        return HTTPD_CGI_DONE;
+    }
+    return HTTPD_CGI_DONE;
+}
 
-static int webserver_read_file(HttpdConnData *connData) {
-
-    char buff[OTA_BUF_LEN + 1];
-    size_t len, x, sp=0;
+int ICACHE_FLASH_ATTR response_with_tpl(HttpdConnData *connData) {
+    char buff[RW_BUFF_LEN + 1];
+    size_t len = 0, x, sp = 0;
     char *e=NULL;
     FRESULT ret;
 
     html_data_t *html_data = connData->cgiData;
-
-
-    if (connData->conn==NULL) {
-        //Connection aborted. Clean up.
-        f_close(&(html_data->file));
-        free(html_data);
-        return HTTPD_CGI_DONE;
-    }
-
-    if (html_data == NULL) {
-        //First call to this cgi. Open the file so we can read it.
-        html_data = os_malloc(sizeof(html_data_t));
-        if (html_data == NULL) {
-            return HTTPD_CGI_NOTFOUND;
-        }
-        os_sprintf(buff, "%s%s", HTML_PATH, connData->url);
-        ret = f_open(&(html_data->file), buff, FA_READ);
-        html_data->tplArg=NULL;
-        html_data->token_pos = -1;
-        if (ret != FR_OK) {
-            free(html_data);
-            return HTTPD_CGI_NOTFOUND;
-        }
-        connData->cgiData=html_data;
-        httpdStartResponse(connData, 200);
-        httpdHeader(connData, "Content-Type", httpdGetMimetype(connData->url));
-        httpdEndHeaders(connData);
-        return HTTPD_CGI_MORE;
-    }
 
     ret = f_read(&(html_data->file), buff, OTA_BUF_LEN, &len);
     if (len>0) {
@@ -115,7 +95,7 @@ static int webserver_read_file(HttpdConnData *connData) {
                     } else {
                         //This is an actual token.
                         html_data->token[html_data->token_pos++]=0; //zero-terminate token
-                        ((TplCallback)(connData->cgiArg))(connData, html_data->token, &html_data->tplArg);
+                        ((TplCallback)(connData->cgiArg))(connData, html_data->token, &html_data->tpl_arg);
                     }
                     //Go collect normal chars again.
                     e=&buff[x+1];
@@ -128,9 +108,9 @@ static int webserver_read_file(HttpdConnData *connData) {
     }
     //Send remaining bit.
     if (sp!=0) httpdSend(connData, e, sp);
-    if (len != OTA_BUF_LEN) {
+    if (len != RW_BUFF_LEN) {
         //We're done.
-        ((TplCallback)(connData->cgiArg))(connData, NULL, &html_data->tplArg);
+        ((TplCallback)(connData->cgiArg))(connData, NULL, &html_data->tpl_arg);
         f_close(&(html_data->file));
         free(html_data);
         return HTTPD_CGI_DONE;
@@ -138,76 +118,89 @@ static int webserver_read_file(HttpdConnData *connData) {
         //Ok, till next time.
         return HTTPD_CGI_MORE;
     }
+
 }
 
+int ICACHE_FLASH_ATTR response_without_tpl(HttpdConnData *connData) {
+    char buff[RW_BUFF_LEN];
+    size_t len = 0;
+    FRESULT ret;
 
+    html_data_t *html_data = connData->cgiData;
 
-int ICACHE_FLASH_ATTR cgi_upload (HttpdConnData *connData) {
-    if (connData->conn==NULL) {
-        //Connection aborted. Clean up.
-        return HTTPD_CGI_DONE;
+    ret = f_read(&(html_data->file), buff, OTA_BUF_LEN, &len);
+
+    if (len > 0) {
+    	httpdSend(connData, buff, len);
+
+    	if (len == RW_BUFF_LEN) {
+            return HTTPD_CGI_MORE;
+    	} else {
+            f_close(&(html_data->file));
+            free(html_data);
+            return HTTPD_CGI_DONE;
+    	}
     }
+    f_close(&(html_data->file));
+    free(html_data);
     return HTTPD_CGI_DONE;
 }
 
 int ICACHE_FLASH_ATTR cgi_response (HttpdConnData *connData) {
+    char buff[256];
+    FRESULT ret;
+
+    html_data_t *html_data = connData->cgiData;
+
     if (connData->conn==NULL) {
         //Connection aborted. Clean up.
+        f_close(&(html_data->file));
+        free(html_data);
         return HTTPD_CGI_DONE;
     }
 
-    os_printf("cgi_response\n");
-    return HTTPD_CGI_DONE;
+    if (html_data == NULL) {
+        //First call to this cgi. Open the file so we can read it.
+        html_data = malloc(sizeof(html_data_t));
+        if (html_data == NULL) {
+            return HTTPD_CGI_NOTFOUND;
+        }
+        os_sprintf(buff, "%s%s", HTML_PATH, connData->url);
+        html_data->tpl_arg=NULL;
+        html_data->token_pos = -1;
+        ret = f_open(&(html_data->file), buff, FA_READ);
+        if (ret != FR_OK) {
+            free(html_data);
+            return HTTPD_CGI_NOTFOUND;
+        }
+        connData->cgiData=html_data;
+        httpdStartResponse(connData, 200);
+        httpdHeader(connData, "Content-Type", httpdGetMimetype(connData->url));
+        httpdEndHeaders(connData);
+        return HTTPD_CGI_MORE;
+    }
+
+    if (connData->cgiArg == NULL) {
+    	return response_without_tpl(connData);
+    }
+
+    return response_with_tpl(connData);
 }
 
-//int ICACHE_FLASH_ATTR cgiGreetUser(HttpdConnData *connData) {
-//    int len;            //length of user name
-//    char name[128];     //Temporary buffer for name
-//    char output[256];   //Temporary buffer for HTML output
-//
-//    //If the browser unexpectedly closes the connection, the CGI will be called
-//    //with connData->conn=NULL. We can use this to clean up any data. It's not really
-//    //used in this simple CGI function.
-//    if (connData->conn==NULL) {
-//        //Connection aborted. Clean up.
-//        return HTTPD_CGI_DONE;
-//    }
-//
-//    if (connData->requestType!=HTTPD_METHOD_GET) {
-//        //Sorry, we only accept GET requests.
-//        httpdStartResponse(connData, 406);  //http error code 'unacceptable'
-//        httpdEndHeaders(connData);
-//        return HTTPD_CGI_DONE;
-//    }
-//
-//    //Look for the 'name' GET value. If found, urldecode it and return it into the 'name' var.
-//    len=httpdFindArg(connData->getArgs, "name", name, sizeof(name));
-//    if (len==-1) {
-//        //If the result of httpdFindArg is -1, the variable isn't found in the data.
-//        strcpy(name, "unknown person");
-//    } else {
-//        //If len isn't -1, the variable is found and is copied to the 'name' variable
-//    }
-//
-//    //Generate the header
-//    //We want the header to start with HTTP code 200, which means the document is found.
-//    httpdStartResponse(connData, 200);
-//    //We are going to send some HTML.
-//    httpdHeader(connData, "Content-Type", "text/html");
-//    //No more headers.
-//    httpdEndHeaders(connData);
-//
-//    //We're going to send the HTML as two pieces: a head and a body. We could've also done
-//    //it in one go, but this demonstrates multiple ways of calling httpdSend.
-//    //Send the HTML head. Using -1 as the length will make httpdSend take the length
-//    //of the zero-terminated string it's passed as the amount of data to send.
-//    httpdSend(connData, "<html><head><title>Page</title></head>", -1)
-//    //Generate the HTML body.
-//    len=sprintf(output, "<body><p>Hello, %s!</p></body></html>", name);
-//    //Send HTML body to webbrowser. We use the length as calculated by sprintf here.
-//    //Using -1 again would also have worked, but this is more efficient.
-//    httpdSend(connData, output, len);
-//
-//    //All done.
-//    return HTTPD_CGI_DONE;
-//}
+int ICACHE_FLASH_ATTR tpl_token(HttpdConnData *connData, char *token, void **arg) {
+	char buff[128], *tmp;
+	if (token == NULL)
+		return HTTPD_CGI_DONE;
+
+	os_strcpy(buff, "Unknown");
+	if (os_strcmp(token, "upgfile") == 0) {
+		if (system_upgrade_userbin_check() == 1)
+			os_strcpy(buff, "user1.bin");
+		else
+			os_strcpy(buff, "user2.bin");
+	}
+
+	httpdSend(connData, buff, -1);
+
+	return HTTPD_CGI_DONE;
+}
