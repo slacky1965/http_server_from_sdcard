@@ -42,7 +42,7 @@ HttpdBuiltInUrl builtInUrls[]={
 };
 
 typedef struct {
-    FIL fp;
+    FIL file;
     char token[64];
     int token_pos;
 } html_data_t;
@@ -50,7 +50,8 @@ typedef struct {
 static int webserver_read_file(HttpdConnData *connData) {
 
     char buff[OTA_BUF_LEN + 1];
-    size_t len;
+    size_t len, x, sp=0;
+    char *e=NULL;
     FRESULT ret;
 
     html_data_t *html_data = connData->cgiData;
@@ -58,7 +59,7 @@ static int webserver_read_file(HttpdConnData *connData) {
 
     if (connData->conn==NULL) {
         //Connection aborted. Clean up.
-        f_close(&(html_data->fp));
+        f_close(&(html_data->file));
         free(html_data);
         return HTTPD_CGI_DONE;
     }
@@ -69,12 +70,12 @@ static int webserver_read_file(HttpdConnData *connData) {
         if (html_data == NULL) {
             return HTTPD_CGI_NOTFOUND;
         }
-        os_sprintf(buff, "%s/%s", HTML_PATH, connData->url);
-        ret = f_open(&(html_data->fp), buff, FA_READ);
-//        tpd->tplArg=NULL;
+        os_sprintf(buff, "%s%s", HTML_PATH, connData->url);
+        ret = f_open(&(html_data->file), buff, FA_READ);
+//        html_data->tplArg=NULL;
         html_data->token_pos = -1;
         if (ret != FR_OK) {
-//            espFsClose(tpd->file);
+//            espFsClose(html_data->file);
             free(html_data);
             return HTTPD_CGI_NOTFOUND;
         }
@@ -85,49 +86,49 @@ static int webserver_read_file(HttpdConnData *connData) {
         return HTTPD_CGI_MORE;
     }
 
-    ret = f_read(&(html_data->fp), buff, OTA_BUF_LEN, &len);
+    ret = f_read(&(html_data->file), buff, OTA_BUF_LEN, &len);
     if (len>0) {
         sp=0;
         e=buff;
         for (x=0; x<len; x++) {
-            if (tpd->tokenPos==-1) {
+            if (html_data->token_pos==-1) {
                 //Inside ordinary text.
                 if (buff[x]=='%') {
                     //Send raw data up to now
                     if (sp!=0) httpdSend(connData, e, sp);
                     sp=0;
                     //Go collect token chars.
-                    tpd->tokenPos=0;
+                    html_data->token_pos=0;
                 } else {
                     sp++;
                 }
             } else {
                 if (buff[x]=='%') {
-                    if (tpd->tokenPos==0) {
+                    if (html_data->token_pos==0) {
                         //This is the second % of a %% escape string.
                         //Send a single % and resume with the normal program flow.
                         httpdSend(connData, "%", 1);
                     } else {
                         //This is an actual token.
-                        tpd->token[tpd->tokenPos++]=0; //zero-terminate token
-                        ((TplCallback)(connData->cgiArg))(connData, tpd->token, &tpd->tplArg);
+                        html_data->token[html_data->token_pos++]=0; //zero-terminate token
+//                        ((TplCallback)(connData->cgiArg))(connData, html_data->token, &html_data->tplArg);
                     }
                     //Go collect normal chars again.
                     e=&buff[x+1];
-                    tpd->tokenPos=-1;
+                    html_data->token_pos=-1;
                 } else {
-                    if (tpd->tokenPos<(sizeof(tpd->token)-1)) tpd->token[tpd->tokenPos++]=buff[x];
+                    if (html_data->token_pos<(sizeof(html_data->token)-1)) html_data->token[html_data->token_pos++]=buff[x];
                 }
             }
         }
     }
     //Send remaining bit.
     if (sp!=0) httpdSend(connData, e, sp);
-    if (len!=1024) {
+    if (len != OTA_BUF_LEN) {
         //We're done.
-        ((TplCallback)(connData->cgiArg))(connData, NULL, &tpd->tplArg);
-        espFsClose(tpd->file);
-        free(tpd);
+//        ((TplCallback)(connData->cgiArg))(connData, NULL, &html_data->tplArg);
+        f_close(&(html_data->file));
+        free(html_data);
         return HTTPD_CGI_DONE;
     } else {
         //Ok, till next time.
