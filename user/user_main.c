@@ -5,7 +5,6 @@
 
 #include "appdef.h"
 #include "sdcard.h"
-#include "ff.h"
 #include "wifi.h"
 #include "platform.h"
 #include "httpd.h"
