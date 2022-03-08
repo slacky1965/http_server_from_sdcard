@@ -1,8 +1,13 @@
 #ifndef USER_INCLUDE_APPDEF_H_
 #define USER_INCLUDE_APPDEF_H_
 
-#ifndef NULL
-#define NULL ((void *)0)
+#ifndef OTA_FLASH_MAP
+#define OTA_FLASH_MAP 6
+#define OTA_FLASH_SIZE_K 4096
+#endif
+
+#ifndef SPI_FLASH_SIZE_MAP
+#define SPI_FLASH_SIZE_MAP 6
 #endif
 
 typedef enum {
