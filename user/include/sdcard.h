@@ -1,6 +1,8 @@
 #ifndef USER_INCLUDE_SDCARD_H_
 #define USER_INCLUDE_SDCARD_H_
 
+#include "ff.h"
+
 #define CS      15
 #define MOSI    13
 #define SCLK    14
@@ -83,17 +85,17 @@ typedef enum {
     SD_CARD_ERROR_ALLOCATE,
     SD_CARD_ERROR_INIT,
     SD_CARD_ERROR_INIT_GPIO
-} sd_card_init_err_t;
+} sdcard_init_err_t;
 
 typedef enum {
     SD_CARD_TYPE_SD1SC = 1,
     SD_CARD_TYPE_SD2SC,
     SD_CARD_TYPE_SD2HC
-} sd_card_type_t;
+} sdcard_type_t;
 
-sd_card_init_err_t sd_init();
+sdcard_init_err_t sd_init();
 int sd_read_sector(uint32_t start_block, uint8_t *buffer, uint32_t sector_count);
 int sd_write_sector(uint32_t start_block, uint8_t *buffer, uint32_t sector_count);
-uint32_t timer_now();
+bool ICACHE_FLASH_ATTR get_sdcard_status();
 
 #endif /* USER_INCLUDE_SDCARD_H_ */
