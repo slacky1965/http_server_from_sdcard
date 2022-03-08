@@ -3,8 +3,6 @@
 #
 SUBMODULES := ../libesphttpd/Makefile 
 
-submodules: $(SUBMODULES) 
-
 $(SUBMODULES):
 	@echo No submodule
 	cd ..; git clone https://github.com/slacky1965/libesphttpd.git
