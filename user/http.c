@@ -17,6 +17,10 @@
 #endif
 
 #define RW_BUFF_LEN 1024
+#define PATH_HTML   "/html/"
+#define PATH_IMAGE  "/image/"
+#define PATH_UPLOAD "/upload/"
+
 
 CgiUploadFlashDef uploadParams={
     .type=CGIFLASH_TYPE_FW,
@@ -42,24 +46,129 @@ typedef void (* TplCallback)(HttpdConnData *connData, char *token, void **arg);
 HttpdBuiltInUrl builtInUrls[] = {
         {"/", cgiRedirect, "/index.html"},
         {"/upload/*", cgi_upload, &uploadParams},
-		{"/scripts.js", cgi_response, NULL},
-        {"*", cgi_response, tpl_token},
+        {"/list", cgi_list, NULL},
+//		{"/scripts.js", cgi_response, NULL},
+        {"*", cgi_response, NULL},
         {NULL, NULL, NULL}
 };
 
 typedef struct {
-    FIL file;
-    void *tpl_arg;
-    char token[64];
-    int token_pos;
+    FIL    file;
+    DIR    dir;
+    void  *tpl_arg;
+    char   token[64];
+    size_t token_pos;
 } html_data_t;
 
-int ICACHE_FLASH_ATTR cgi_upload (HttpdConnData *connData) {
+int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
+
+    char buff[512];
+    char spaces[16];
+    FILINFO f_info;
+    FRESULT ret;
+    size_t len, total_len;
+    FATFS *fs;
+    uint32_t fre_clust, fre_sect;
+
+    html_data_t *html_data = connData->cgiData;
+
+    if (connData->requestType != HTTPD_METHOD_POST) {
+        return HTTPD_CGI_NOTFOUND;
+    }
+
+    if (connData->conn==NULL) {
+        //Connection aborted. Clean up.
+        f_closedir(&(html_data->dir));
+        free(html_data);
+        return HTTPD_CGI_DONE;
+    }
+
+    if (html_data == NULL) {
+        //First call to this cgi. Open the file so we can read it.
+        html_data = malloc(sizeof(html_data_t));
+        if (html_data == NULL) {
+            return HTTPD_CGI_NOTFOUND;
+        }
+        html_data->tpl_arg=NULL;
+        ret = f_opendir(&(html_data->dir), HTML_PATH);
+        if (ret != FR_OK) {
+            free(html_data);
+            return HTTPD_CGI_NOTFOUND;
+        }
+        connData->cgiData=html_data;
+        httpdStartResponse(connData, 200);
+        httpdHeader(connData, "Content-Type", httpdGetMimetype(connData->url));
+        httpdEndHeaders(connData);
+        sprintf(buff, "Directory: %s\n\n", HTML_PATH);
+        httpdSend(connData, buff, strlen(buff));
+        return HTTPD_CGI_MORE;
+    }
+
+    while (f_readdir(&(html_data->dir), &f_info) == FR_OK && f_info.fname[0]) {
+        sprintf(buff, "%ld", f_info.fsize);
+        len = 7 - strlen(buff);
+        memset(spaces, ' ', len);
+        spaces[len] = 0;
+        os_sprintf(buff, "  %s%ld    %s\n", spaces, f_info.fsize, f_info.fname);
+        total_len += f_info.fsize;
+        httpdSend(connData, buff, strlen(buff));
+    }
+
+    f_closedir(&(html_data->dir));
+    free(html_data);
+
+
+    f_getfree("", &fre_clust, &fs);
+
+    /* Get total sectors and free sectors */
+    fre_sect = fre_clust * fs->csize;
+
+    os_sprintf(buff, "\nUsed %d\tbytes\nFree %d\tbytes\n", total_len, fre_sect / 2);
+    httpdSend(connData, buff, strlen(buff));
+
+    return HTTPD_CGI_DONE;
+}
+
+int ICACHE_FLASH_ATTR cgi_upload(HttpdConnData *connData) {
+    const char *full_path;
+    char *err = NULL;
+
     if (connData->conn==NULL) {
         //Connection aborted. Clean up.
         return HTTPD_CGI_DONE;
     }
-    return HTTPD_CGI_DONE;
+
+    full_path = connData->url+strlen(PATH_UPLOAD)-1;
+
+    if (strncmp(full_path, PATH_HTML, strlen(PATH_HTML)) == 0) {
+        if (strlen(full_path+strlen(PATH_HTML)) >= FF_MAX_LFN) {
+            err = "Filename too long";
+            os_printf("%s. (%s:%u)", err, __FILE__, __LINE__);
+            return HTTPD_CGI_NOTFOUND;
+        }
+
+        os_printf("len: %d\n", connData->post->len);
+        os_printf("buffLen: %d\n", connData->post->buffLen);
+        os_printf("buffSize: %d\n", connData->post->buffSize);
+
+//        return webserver_upload_html(req, full_path);
+
+    } else if (strncmp(full_path, PATH_IMAGE, strlen(PATH_IMAGE)) == 0) {
+        if (strlen(full_path+strlen(PATH_IMAGE)) >= FF_MAX_LFN) {
+            err = "Filename too long";
+            os_printf("%s. (%s:%u)", err, __FILE__, __LINE__);
+            return HTTPD_CGI_NOTFOUND;
+        }
+
+//        return webserver_update(req, full_path);
+
+    } else {
+        err = "Invalid path";
+        os_printf("%s: %s. (%s:%u)", err, connData->url, __FILE__, __LINE__);
+        return HTTPD_CGI_NOTFOUND;
+    }
+
+    return HTTPD_CGI_MORE;
 }
 
 int ICACHE_FLASH_ATTR response_with_tpl(HttpdConnData *connData) {
@@ -70,7 +179,7 @@ int ICACHE_FLASH_ATTR response_with_tpl(HttpdConnData *connData) {
 
     html_data_t *html_data = connData->cgiData;
 
-    ret = f_read(&(html_data->file), buff, OTA_BUF_LEN, &len);
+    ret = f_read(&(html_data->file), buff, RW_BUFF_LEN, &len);
     if (len>0) {
         sp=0;
         e=buff;
@@ -128,7 +237,9 @@ int ICACHE_FLASH_ATTR response_without_tpl(HttpdConnData *connData) {
 
     html_data_t *html_data = connData->cgiData;
 
-    ret = f_read(&(html_data->file), buff, OTA_BUF_LEN, &len);
+    ret = f_read(&(html_data->file), buff, RW_BUFF_LEN, &len);
+
+    os_printf("len: %d\n", len);
 
     if (len > 0) {
     	httpdSend(connData, buff, len);
@@ -146,7 +257,7 @@ int ICACHE_FLASH_ATTR response_without_tpl(HttpdConnData *connData) {
     return HTTPD_CGI_DONE;
 }
 
-int ICACHE_FLASH_ATTR cgi_response (HttpdConnData *connData) {
+int ICACHE_FLASH_ATTR cgi_response(HttpdConnData *connData) {
     char buff[256];
     FRESULT ret;
 
