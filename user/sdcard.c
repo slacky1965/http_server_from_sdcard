@@ -9,9 +9,9 @@
 #include "sdcard.h"
 
 uint8_t type;
-bool sd_card_init_ok = false;
+bool sdcard_init_ok = false;
 
-static sd_card_init_err_t ICACHE_FLASH_ATTR sd_gpio_init() {
+static sdcard_init_err_t ICACHE_FLASH_ATTR sd_gpio_init() {
 
     if (CS < GPIO0 || CS >= GPIOMAX) {
         os_printf("Invalide GPIO_CS - %d, must be %d-%d. (%s:%u)\n", CS, GPIO0, GPIOMAX-1, __FILE__, __LINE__);
@@ -125,7 +125,7 @@ static void ICACHE_FLASH_ATTR sd_select() {
     GPIO_OUTPUT_SET(CS, 0);
 }
 
-sd_card_init_err_t ICACHE_FLASH_ATTR sd_init() {
+sdcard_init_err_t ICACHE_FLASH_ATTR sd_init() {
     uint8_t response_r1;
     uint32_t count;
     uint32_t response_not_r1;
@@ -227,7 +227,7 @@ sd_card_init_err_t ICACHE_FLASH_ATTR sd_init() {
 
     sd_release();
 
-    sd_card_init_ok = true;
+    sdcard_init_ok = true;
 
     return SD_CARD_INIT_OK;
 }
@@ -324,4 +324,8 @@ int ICACHE_FLASH_ATTR sd_write_sector(uint32_t start_block, uint8_t *buffer, uin
     }
     sd_release();
     return 1;
+}
+
+bool ICACHE_FLASH_ATTR get_sdcard_status() {
+	return sdcard_init_ok;
 }
