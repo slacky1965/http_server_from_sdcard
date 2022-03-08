@@ -34,18 +34,23 @@ CgiUploadFlashDef uploadParams={
     .tagName=OTA_TAGNAME
 };
 
+int ICACHE_FLASH_ATTR tpl_token(HttpdConnData *connData, char *token, void **arg);
+
 HttpdBuiltInUrl builtInUrls[]={
         {"/", cgiRedirect, "/index.html"},
         {"/upload/*", cgi_upload, &uploadParams},
-        {"*", cgi_response, NULL},
+        {"*", cgi_response, tpl_token},
         {NULL, NULL, NULL}
 };
 
 typedef struct {
     FIL file;
+    void *tplArg;
     char token[64];
     int token_pos;
 } html_data_t;
+
+typedef void (* TplCallback)(HttpdConnData *connData, char *token, void **arg);
 
 static int webserver_read_file(HttpdConnData *connData) {
 
@@ -72,10 +77,9 @@ static int webserver_read_file(HttpdConnData *connData) {
         }
         os_sprintf(buff, "%s%s", HTML_PATH, connData->url);
         ret = f_open(&(html_data->file), buff, FA_READ);
-//        html_data->tplArg=NULL;
+        html_data->tplArg=NULL;
         html_data->token_pos = -1;
         if (ret != FR_OK) {
-//            espFsClose(html_data->file);
             free(html_data);
             return HTTPD_CGI_NOTFOUND;
         }
@@ -111,7 +115,7 @@ static int webserver_read_file(HttpdConnData *connData) {
                     } else {
                         //This is an actual token.
                         html_data->token[html_data->token_pos++]=0; //zero-terminate token
-//                        ((TplCallback)(connData->cgiArg))(connData, html_data->token, &html_data->tplArg);
+                        ((TplCallback)(connData->cgiArg))(connData, html_data->token, &html_data->tplArg);
                     }
                     //Go collect normal chars again.
                     e=&buff[x+1];
@@ -126,7 +130,7 @@ static int webserver_read_file(HttpdConnData *connData) {
     if (sp!=0) httpdSend(connData, e, sp);
     if (len != OTA_BUF_LEN) {
         //We're done.
-//        ((TplCallback)(connData->cgiArg))(connData, NULL, &html_data->tplArg);
+        ((TplCallback)(connData->cgiArg))(connData, NULL, &html_data->tplArg);
         f_close(&(html_data->file));
         free(html_data);
         return HTTPD_CGI_DONE;
