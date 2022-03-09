@@ -54,11 +54,15 @@ HttpdBuiltInUrl builtInUrls[] = {
 
 typedef struct {
     FIL    file;
-    DIR    dir;
     void  *tpl_arg;
     char   token[64];
     size_t token_pos;
 } html_data_t;
+
+typedef struct {
+    DIR    dir;
+    size_t gl_len;
+} dir_data_t;
 
 int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
 
@@ -70,7 +74,7 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
     FATFS *fs;
     uint32_t fre_clust, fre_sect;
 
-    html_data_t *html_data = connData->cgiData;
+    dir_data_t *dir_data = connData->cgiData;
 
     if (connData->requestType != HTTPD_METHOD_POST) {
         return HTTPD_CGI_NOTFOUND;
@@ -78,24 +82,24 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
 
     if (connData->conn==NULL) {
         //Connection aborted. Clean up.
-        f_closedir(&(html_data->dir));
-        free(html_data);
+        f_closedir(&(dir_data->dir));
+        free(dir_data);
         return HTTPD_CGI_DONE;
     }
 
-    if (html_data == NULL) {
+    if (dir_data == NULL) {
         //First call to this cgi. Open the file so we can read it.
-        html_data = malloc(sizeof(html_data_t));
-        if (html_data == NULL) {
+        dir_data = malloc(sizeof(dir_data_t));
+        if (dir_data == NULL) {
             return HTTPD_CGI_NOTFOUND;
         }
-        html_data->tpl_arg=NULL;
-        ret = f_opendir(&(html_data->dir), HTML_PATH);
+        ret = f_opendir(&(dir_data->dir), HTML_PATH);
         if (ret != FR_OK) {
-            free(html_data);
+            free(dir_data);
             return HTTPD_CGI_NOTFOUND;
         }
-        connData->cgiData=html_data;
+        dir_data->gl_len = 0;
+        connData->cgiData=dir_data;
         httpdStartResponse(connData, 200);
         httpdHeader(connData, "Content-Type", httpdGetMimetype(connData->url));
         httpdEndHeaders(connData);
@@ -104,26 +108,26 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
         return HTTPD_CGI_MORE;
     }
 
-    while (f_readdir(&(html_data->dir), &f_info) == FR_OK && f_info.fname[0]) {
+    if (f_readdir(&(dir_data->dir), &f_info) == FR_OK && f_info.fname[0]) {
         sprintf(buff, "%ld", f_info.fsize);
         len = 7 - strlen(buff);
         memset(spaces, ' ', len);
         spaces[len] = 0;
         os_sprintf(buff, "  %s%ld    %s\n", spaces, f_info.fsize, f_info.fname);
-        total_len += f_info.fsize;
+        dir_data->gl_len += f_info.fsize;
         httpdSend(connData, buff, strlen(buff));
+        return HTTPD_CGI_MORE;
     }
 
-    f_closedir(&(html_data->dir));
-    free(html_data);
-
+    f_closedir(&(dir_data->dir));
+    free(dir_data);
 
     f_getfree("", &fre_clust, &fs);
 
     /* Get total sectors and free sectors */
     fre_sect = fre_clust * fs->csize;
 
-    os_sprintf(buff, "\nUsed %d\tbytes\nFree %d\tbytes\n", total_len, fre_sect / 2);
+    os_sprintf(buff, "\nUsed %d\tbytes\nFree %d\tbytes\n", dir_data->gl_len, fre_sect / 2);
     httpdSend(connData, buff, strlen(buff));
 
     return HTTPD_CGI_DONE;
