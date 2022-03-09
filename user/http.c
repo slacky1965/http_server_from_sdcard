@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include "osapi.h"
 #include "user_interface.h"
 #include "user_config.h"
@@ -22,30 +23,21 @@
 #define PATH_UPLOAD "/upload/"
 
 
-CgiUploadFlashDef uploadParams={
-    .type=CGIFLASH_TYPE_FW,
-    .fw1Pos=0x1000,
-#if OTA_FLASH_MAP == 6 || OTA_FLASH_MAP == 3
-    .fw2Pos=((OTA_FLASH_SIZE_K*512)/2)+0x1000,
-    .fwSize=((OTA_FLASH_SIZE_K*512)/2)-0x7000,
-#else
-    #if OTA_FLASH_MAP == 4
-    .fw2Pos=((OTA_FLASH_MAP/2*512)/2)+0x1000,
-    .fwSize=((OTA_FLASH_MAP/2*512)/2)-0x7000,
-    #else
-    .fw2Pos=((OTA_FLASH_MAP*1024)/2)+0x1000,
-    .fwSize=((OTA_FLASH_MAP*1024)/2)-0x7000,
-    #endif
-#endif
-    .tagName=OTA_TAGNAME
+CgiUploadFlashDef upload_params={
+	.type=CGIFLASH_TYPE_FW,
+	.fw1Pos=0x1000,
+	.fw2Pos=((OTA_FLASH_SIZE_K*1024)/2)+0x1000,
+	.fwSize=((OTA_FLASH_SIZE_K*1024)/2)-0x1000,
+	.tagName=OTA_TAGNAME
 };
+
 
 int ICACHE_FLASH_ATTR tpl_token(HttpdConnData *connData, char *token, void **arg);
 typedef void (* TplCallback)(HttpdConnData *connData, char *token, void **arg);
 
 HttpdBuiltInUrl builtInUrls[] = {
         {"/", cgiRedirect, "/index.html"},
-        {"/upload/*", cgi_upload, &uploadParams},
+        {"/upload/*", cgi_upload, &upload_params},
         {"/list", cgi_list, NULL},
 //		{"/scripts.js", cgi_response, NULL},
         {"*", cgi_response, NULL},
@@ -131,48 +123,6 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
     httpdSend(connData, buff, strlen(buff));
 
     return HTTPD_CGI_DONE;
-}
-
-int ICACHE_FLASH_ATTR cgi_upload(HttpdConnData *connData) {
-    const char *full_path;
-    char *err = NULL;
-
-    if (connData->conn==NULL) {
-        //Connection aborted. Clean up.
-        return HTTPD_CGI_DONE;
-    }
-
-    full_path = connData->url+strlen(PATH_UPLOAD)-1;
-
-    if (strncmp(full_path, PATH_HTML, strlen(PATH_HTML)) == 0) {
-        if (strlen(full_path+strlen(PATH_HTML)) >= FF_MAX_LFN) {
-            err = "Filename too long";
-            os_printf("%s. (%s:%u)", err, __FILE__, __LINE__);
-            return HTTPD_CGI_NOTFOUND;
-        }
-
-        os_printf("len: %d\n", connData->post->len);
-        os_printf("buffLen: %d\n", connData->post->buffLen);
-        os_printf("buffSize: %d\n", connData->post->buffSize);
-
-//        return webserver_upload_html(req, full_path);
-
-    } else if (strncmp(full_path, PATH_IMAGE, strlen(PATH_IMAGE)) == 0) {
-        if (strlen(full_path+strlen(PATH_IMAGE)) >= FF_MAX_LFN) {
-            err = "Filename too long";
-            os_printf("%s. (%s:%u)", err, __FILE__, __LINE__);
-            return HTTPD_CGI_NOTFOUND;
-        }
-
-//        return webserver_update(req, full_path);
-
-    } else {
-        err = "Invalid path";
-        os_printf("%s: %s. (%s:%u)", err, connData->url, __FILE__, __LINE__);
-        return HTTPD_CGI_NOTFOUND;
-    }
-
-    return HTTPD_CGI_MORE;
 }
 
 int ICACHE_FLASH_ATTR response_with_tpl(HttpdConnData *connData) {
@@ -319,3 +269,103 @@ int ICACHE_FLASH_ATTR tpl_token(HttpdConnData *connData, char *token, void **arg
 
 	return HTTPD_CGI_DONE;
 }
+
+#define PAGELEN 256
+
+typedef struct {
+	char page_data[PAGELEN];
+	int page_pos;
+	int address;
+	int len;
+} update_state_t;
+
+static int ota_update(HttpdConnData *connData) {
+
+	char *data;
+    update_state_t *state = connData->cgiData;
+
+    if (connData->conn==NULL) {
+        //Connection aborted. Clean up.
+        free(state);
+        return HTTPD_CGI_DONE;
+    }
+
+	/* First call. Allocate and initialize state variable. */
+    if (state == NULL) {
+    	char *file_name_p; //, *file_name;
+    	uint32_t ota_flash_map, ota_flash_size;
+    	char *image_name, *str_ota_flash_map, *new, *str_ota_flash_size;
+    	data = connData->post->buff;
+    	char file_name[] = "user1.4096.new.6.bin";
+
+    	image_name = strtok(file_name, ".");
+    	if (image_name == NULL) {
+    		//return err;
+    	}
+
+    	str_ota_flash_size = strtok(NULL, ".");
+    	if (str_ota_flash_size == NULL) {
+    		// return err;
+    	}
+    	ota_flash_size = atoi(str_ota_flash_size);
+
+    	new = strtok(NULL, ".");
+    	if (new == NULL) {
+    		// return err;
+    	}
+
+    	str_ota_flash_map = strtok(NULL, ".");
+    	if (str_ota_flash_map == NULL) {
+    		//return err;
+    	}
+    	ota_flash_map = atoi(str_ota_flash_map);
+
+
+    }
+
+    return HTTPD_CGI_DONE;
+}
+
+
+int ICACHE_FLASH_ATTR cgi_upload(HttpdConnData *connData) {
+    const char *full_path;
+    char *err = NULL;
+
+//    if (connData->conn==NULL) {
+//        //Connection aborted. Clean up.
+//        return HTTPD_CGI_DONE;
+//    }
+
+    full_path = connData->url+strlen(PATH_UPLOAD)-1;
+
+    if (strncmp(full_path, PATH_HTML, strlen(PATH_HTML)) == 0) {
+        if (strlen(full_path+strlen(PATH_HTML)) >= FF_MAX_LFN) {
+            err = "Filename too long";
+            os_printf("%s. (%s:%u)", err, __FILE__, __LINE__);
+            return HTTPD_CGI_NOTFOUND;
+        }
+
+        os_printf("len: %d\n", connData->post->len);
+        os_printf("buffLen: %d\n", connData->post->buffLen);
+        os_printf("buffSize: %d\n", connData->post->buffSize);
+
+//        return webserver_upload_html(req, full_path);
+
+    } else if (strncmp(full_path, PATH_IMAGE, strlen(PATH_IMAGE)) == 0) {
+        if (strlen(full_path+strlen(PATH_IMAGE)) >= FF_MAX_LFN) {
+            err = "Filename too long";
+            os_printf("%s. (%s:%u)", err, __FILE__, __LINE__);
+            return HTTPD_CGI_NOTFOUND;
+        }
+
+        return ota_update(connData);
+
+    } else {
+        err = "Invalid path";
+        os_printf("%s: %s. (%s:%u)", err, connData->url, __FILE__, __LINE__);
+        return HTTPD_CGI_NOTFOUND;
+    }
+
+    return HTTPD_CGI_MORE;
+}
+
