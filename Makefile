@@ -124,8 +124,7 @@ DEPENDS_eagle.app.v6 = \
 #	-DWLAN_CONFIG_CCX
 CONFIGURATION_DEFINES =	-DICACHE_FLASH \
                         -DGLOBAL_DEBUG_ON \
-                        -DFATFS_DEF_UINT32_AS_INT \
-                        -DUSE_FILELIB_STDIO_COMPAT_NAMES
+                        -DOTA_FLASH_SIZE_K=$(flash)
 
 DEFINES +=				\
 	$(UNIVERSAL_TARGET_DEFINES)	\
@@ -239,6 +238,9 @@ flash:
 		$(initdata_addr) ../bin/esp_init_data_default_v08.bin \
 		$(blank_addr2) ../bin/blank.bin
 		
-.PHONY: FORCE flash
+test:
+	@echo flash $(flash)
+		
+.PHONY: FORCE flash test
 FORCE:
 
