@@ -26,8 +26,8 @@
 CgiUploadFlashDef upload_params={
 	.type=CGIFLASH_TYPE_FW,
 	.fw1Pos=0x1000,
-	.fw2Pos=((OTA_FLASH_SIZE_K*1024)/2)+0x1000,
-	.fwSize=((OTA_FLASH_SIZE_K*1024)/2)-0x1000,
+	.fw2Pos=FIRMWARE_POS,
+	.fwSize=FIRMWARE_SIZE,
 	.tagName=OTA_TAGNAME
 };
 
@@ -271,6 +271,9 @@ int ICACHE_FLASH_ATTR tpl_token(HttpdConnData *connData, char *token, void **arg
 }
 
 #define PAGELEN 256
+#define FILETYPE_ESPFS 0
+#define FILETYPE_FLASH 1
+#define FILETYPE_OTA 2
 
 typedef struct {
 	char page_data[PAGELEN];
@@ -279,6 +282,13 @@ typedef struct {
 	int len;
 } update_state_t;
 
+typedef struct __attribute__((packed)) {
+	char magic[4];
+	char tag[28];
+	int32_t len1;
+	int32_t len2;
+} ota_header;
+
 static int ota_update(HttpdConnData *connData) {
 
 	char *data;
@@ -286,7 +296,7 @@ static int ota_update(HttpdConnData *connData) {
 
     if (connData->conn==NULL) {
         //Connection aborted. Clean up.
-        free(state);
+        if (state != NULL) free(state);
         return HTTPD_CGI_DONE;
     }
 
