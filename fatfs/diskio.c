@@ -10,7 +10,9 @@
 #include "ff.h"			/* Obtains integer types */
 #include "diskio.h"		/* Declarations of disk functions */
 
-#include "sdcard.h"
+extern int sd_read_sector(uint32_t start_block, uint8_t *buffer, uint32_t sector_count);
+extern int sd_write_sector(uint32_t start_block, uint8_t *buffer, uint32_t sector_count);
+extern bool get_sdcard_status();
 
 /* Definitions of physical drive number for each drive */
 #define DEV_RAM		0	/* Example: Map Ramdisk to physical drive 0 */
@@ -26,7 +28,10 @@ DSTATUS ICACHE_FLASH_ATTR disk_status (
 	BYTE pdrv		/* Physical drive nmuber to identify the drive */
 )
 {
-    return RES_OK;
+    if (get_sdcard_status())
+        return RES_OK;
+
+    return RES_ERROR;
 }
 
 
