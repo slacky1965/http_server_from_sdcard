@@ -1,13 +1,14 @@
 #ifndef __USER_CONFIG_H__
 #define __USER_CONFIG_H__
 
-#ifndef OTA_FLASH_MAP
-#define OTA_FLASH_MAP 6
-#define OTA_FLASH_SIZE_K 4096
+#define LOG_DEBUG
+
+#ifndef LOG_DEBUG
+#define log_print(fmt, ...) ets_uart_printf(fmt, ##__VA_ARGS__)
+#else
+#define log_print(fmt, ...) os_printf(fmt, ##__VA_ARGS__)
 #endif
 
-#ifndef SPI_FLASH_SIZE_MAP
-#define SPI_FLASH_SIZE_MAP 6
-#endif
+extern int ets_uart_printf(const char *fmt, ...);
 
 #endif
