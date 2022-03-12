@@ -9,5 +9,6 @@ extern HttpdBuiltInUrl builtInUrls[];
 int ICACHE_FLASH_ATTR cgi_upload(HttpdConnData *connData);
 int ICACHE_FLASH_ATTR cgi_response(HttpdConnData *connData);
 int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData);
+int ICACHE_FLASH_ATTR cgi_user_ota_file(HttpdConnData *connData);
 
 #endif /* USER_INCLUDE_HTTP_H_ */
