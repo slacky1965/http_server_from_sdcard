@@ -27,21 +27,13 @@
 
 static os_timer_t resetTimer;
 
-//CgiUploadFlashDef upload_params={
-//	.type=CGIFLASH_TYPE_FW,
-//	.fw1Pos=0x1000,
-//	.fw2Pos=FIRMWARE_POS,
-//	.fwSize=FIRMWARE_SIZE,
-//	.tagName=OTA_TAGNAME
-//};
-
-
 int ICACHE_FLASH_ATTR tpl_token(HttpdConnData *connData, char *token, void **arg);
 typedef void (* TplCallback)(HttpdConnData *connData, char *token, void **arg);
 
 HttpdBuiltInUrl builtInUrls[] = {
         {"/", cgiRedirect, "/index.html"},
 //        {"/upload/*", cgi_upload, &upload_params},
+        {"/user_ota_file", cgi_user_ota_file, NULL},
         {"/upload/*", cgi_upload, NULL},
         {"/list", cgi_list, NULL},
 //		{"/scripts.js", cgi_response, NULL},
@@ -303,20 +295,6 @@ static void ICACHE_FLASH_ATTR resetTimerCb(void *arg) {
     system_upgrade_reboot();
 }
 
-// Check that the header of the firmware blob looks like actual firmware...
-LOCAL int ICACHE_FLASH_ATTR checkBinHeader(void *buf) {
-    uint8_t *cd = (uint8_t *) buf;
-    if (cd[0] != 0xEA)
-        return 0;
-    if (cd[1] != 4 || cd[2] > 3 || cd[3] > 0x40)
-        return 0;
-    if (((uint16_t *) buf)[3] != 0x4010)
-        return 0;
-    if (((uint32_t *) buf)[2] != 0)
-        return 0;
-    return 1;
-}
-
 static bool ICACHE_FLASH_ATTR check_bin_header(void *buf, uint32_t address) {
     uint8_t *cd = (uint8_t *) buf;
     if (cd[0] != 0xEA) return false;
@@ -333,44 +311,25 @@ static bool ICACHE_FLASH_ATTR check_bin_header(void *buf, uint32_t address) {
     return true;
 }
 
-#define PAGELEN 256
-//#define FILETYPE_ESPFS 0
-//#define FILETYPE_FLASH 1
-//#define FILETYPE_OTA 2
-
-typedef struct {
-	char page_data[PAGELEN];
-	int page_pos;
-	int address;
-	int len;
-} update_state_t;
-
-//typedef struct __attribute__((packed)) {
-//	char magic[4];
-//	char tag[28];
-//	int32_t len1;
-//	int32_t len2;
-//} ota_header;
-
 static int httpd_ota_update(HttpdConnData *connData) {
 
     char *err = NULL;
     bool lastBuff = false;
+    char last_buff[4] = {0};
 
-    update_state_t *state = (update_state_t*)connData->cgiData;
-    CgiUploadFlashDef *def = (CgiUploadFlashDef*)connData->cgiArg;
+    size_t *address = (size_t*)connData->cgiData;
 
     if (connData->conn==NULL) {
         //Connection aborted. Clean up.
-        if (state != NULL) free(state);
+        if (address != NULL) free(address);
         return HTTPD_CGI_DONE;
     }
 
     char *data=connData->post->buff;
     int data_len=connData->post->buffLen;
 
-	/* First call. Allocate and initialize state variable. */
-    if (state == NULL) {
+	/* First call. Allocate and initialize address variable. */
+    if (address == NULL) {
         os_printf("Firmware upload start.\n");
 
         if (connData->post->len > FIRMWARE_SIZE) {
@@ -383,44 +342,36 @@ static int httpd_ota_update(HttpdConnData *connData) {
             return HTTPD_CGI_DONE;
         }
 
-        state = os_malloc(sizeof(update_state_t));
-        if (state == NULL) {
+        address = os_malloc(sizeof(size_t));
+        if (address == NULL) {
             err = "Error allocation memory";
             os_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
             httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, err);
             return HTTPD_CGI_DONE;
         }
 
-        memset(state, 0, sizeof(update_state_t));
-        connData->cgiData = state;
+        memset(address, 0, sizeof(size_t));
+        connData->cgiData = address;
 
         if (system_upgrade_userbin_check() == 1) {
             os_printf("Flashing user1.bin\n");
-            state->address = 0x1000;
+            *address = 0x1000;
         } else {
             os_printf("Flashing user2.bin\n");
-            state->address = FIRMWARE_POS;
+            *address = FIRMWARE_POS;
         }
 
-        if (!check_bin_header(data, state->address)) {
+        if (!check_bin_header(data, *address)) {
             err = "Invalid flash image type!";
             os_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
             httpdSendErr(connData, HTTPD_400_BAD_REQUEST, err);
             return HTTPD_CGI_DONE;
         }
 
-//        if (!checkBinHeader(data)) {
-//            err = "Invalid flash image type!";
-//            os_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
-//            httpdSendErr(connData, HTTPD_400_BAD_REQUEST, err);
-//            return HTTPD_CGI_DONE;
-//        }
-
-
         int countSector = connData->post->len / SPI_FLASH_SEC_SIZE;
         countSector += connData->post->len % SPI_FLASH_SEC_SIZE ? 1 : 0;
 
-        int flashSector = state->address / SPI_FLASH_SEC_SIZE;
+        int flashSector = *address / SPI_FLASH_SEC_SIZE;
 
         ets_intr_lock();
 
@@ -434,60 +385,27 @@ static int httpd_ota_update(HttpdConnData *connData) {
 
     }
 
+    /* HTTPD_MAX_POST_LEN must be a multiple of four is always!!! */
+    if (connData->post->buffLen < connData->post->buffSize) {
+        data_len = (connData->post->buffLen / 4) * 4;
 
-    while (data_len != 0) {
-
-        bool write = false;
-        if (state->page_pos == 0) {
-            if (data_len >= PAGELEN) {
-                os_memcpy(state->page_data, data, PAGELEN);
-                write = true;
-                state->len = PAGELEN;
-                data += PAGELEN;
-                data_len -= PAGELEN;
-            } else {
-                os_memcpy(state->page_data, data, data_len);
-                state->page_pos = data_len;
-                if (lastBuff) {
-                    write = true;
-                    state->len = data_len;
-                }
-                data_len = 0;
-            }
-        } else {
-            int len = PAGELEN - state->page_pos;
-            if (data_len >= len) {
-                os_memcpy(&state->page_data[state->page_pos], data, len);
-                write = true;
-                state->len = PAGELEN;
-                data += len;
-                data_len -= len;
-                state->page_pos = 0;
-            } else {
-                os_memcpy(&state->page_data[state->page_pos], data, len);
-                state->page_pos += len;
-                if (lastBuff) {
-                    write = true;
-                    state->len = len;
-                }
-            }
-        }
-
-        os_printf("address - 0x%x\n", state->address);
-
-        if (write) {
-
-
-            ets_intr_lock();
-
-            spi_flash_write(state->address, (uint32 *)state->page_data, state->len);
-
-            ets_intr_unlock();
-
-            state->address += state->len;
-
+        if (connData->post->buffLen % 4) {
+            os_memcpy(last_buff, connData->post->buff+data_len, connData->post->buffLen-data_len);
         }
     }
+
+    ets_intr_lock();
+
+    spi_flash_write(*address, (uint32*)data, data_len);
+
+    if (last_buff[0] != 0) {
+        spi_flash_write((*address)+data_len, (uint32*)last_buff, sizeof(last_buff));
+        *address += sizeof(last_buff);
+    }
+
+    ets_intr_unlock();
+
+    *address += data_len;
 
     if (connData->post->len == connData->post->received) {
         //We're done! Format a response.
@@ -496,11 +414,11 @@ static int httpd_ota_update(HttpdConnData *connData) {
         httpdHeader(connData, "Content-Type", "text/plain");
         httpdEndHeaders(connData);
         httpdSend(connData, "Upload done! Rebooting ...\n", -1);
-        free(state);
+        free(address);
 
-//        os_timer_disarm(&resetTimer);
-//        os_timer_setfn(&resetTimer, resetTimerCb, NULL);
-//        os_timer_arm(&resetTimer, 1000, 0);
+        os_timer_disarm(&resetTimer);
+        os_timer_setfn(&resetTimer, resetTimerCb, NULL);
+        os_timer_arm(&resetTimer, 1000, 0);
 
         os_printf("Rebooting...\n");
 
