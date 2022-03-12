@@ -1,8 +1,9 @@
 #include "osapi.h"
 #include "user_interface.h"
-#include "user_config.h"
 #include "mem.h"
+#include "driver/uart.h"
 
+#include "user_config.h"
 #include "appdef.h"
 #include "sdcard.h"
 #include "wifi.h"
@@ -79,10 +80,15 @@ void ICACHE_FLASH_ATTR user_init(void) {
 
     FATFS FatFs;
 
-//	wifi_set_opmode(NULL_MODE);
+#ifndef LOG_DEBUG
+    system_set_os_print(0);
+#endif
+
+    uart_init(BIT_RATE_115200, BIT_RATE_115200);
+    os_delay_us(65535);
 
 	if (sd_init() == SD_CARD_INIT_OK) {
-	    os_printf("sd card init ok\n");
+	    log_print("sd card init ok\n");
 	    f_mount(&FatFs, "", 0);
 
 //	    print_directory("/html");
@@ -91,6 +97,7 @@ void ICACHE_FLASH_ATTR user_init(void) {
 
 	start_wifi_sta();
 	httpdInit(builtInUrls, 80);
+    log_print("TestTestTest\n");
 
 }
 
