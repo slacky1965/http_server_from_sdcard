@@ -34,8 +34,7 @@
 #define CMD25   0X19
 /** ERASE_WR_BLK_START - sets the address of the first block to be erased */
 #define CMD32   0X20
-/** ERASE_WR_BLK_END - sets the address of the last block of the continuous
-    range to be erased*/
+/** ERASE_WR_BLK_END - sets the address of the last block of the continuous range to be erased*/
 #define CMD33   0X21
 /** ERASE - erase all previously selected blocks */
 #define CMD38   0X26
@@ -43,11 +42,11 @@
 #define CMD55   0X37
 /** READ_OCR - read the OCR register of a card */
 #define CMD58   0X3A
-/** SET_WR_BLK_ERASE_COUNT - Set the number of write blocks to be
-     pre-erased before writing */
+/** CRC_ON_OFF - turn the CRC option on or off */
+#define CMD59   0X3B
+/** SET_WR_BLK_ERASE_COUNT - Set the number of write blocks to be pre-erased before writing */
 #define ACMD23  0X17
-/** SD_SEND_OP_COMD - Sends host capacity support information and
-    activates the card's initialization process */
+/** SD_SEND_OP_COMD - Sends host capacity support information and activates the card's initialization process */
 #define ACMD41          0X29
 #define ACMD41_ARG_V1   0x00
 #define ACMD41_ARG_V2   0X40000000
@@ -96,6 +95,6 @@ typedef enum {
 sdcard_init_err_t sd_init();
 int sd_read_sector(uint32_t start_block, uint8_t *buffer, uint32_t sector_count);
 int sd_write_sector(uint32_t start_block, uint8_t *buffer, uint32_t sector_count);
-bool ICACHE_FLASH_ATTR get_sdcard_status();
+bool get_sdcard_status();
 
 #endif /* USER_INCLUDE_SDCARD_H_ */
