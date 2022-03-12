@@ -174,7 +174,7 @@ sdcard_init_err_t ICACHE_FLASH_ATTR sd_init() {
         if (response_r1 == R1_READY_STATE) {
             sd_write_byte(0xFF);
             sd_send_cmd(CMD16, 512, 0XFF, NULL);
-        } else if (response_r1 & R1_ILLEGAL_COMMAND) {
+        } else /*if (response_r1 & R1_ILLEGAL_COMMAND)*/ {
             count = 0;
             do {
                 response_r1 = sd_send_cmd(CMD1, 0, 0XFF, NULL);
@@ -252,7 +252,7 @@ int ICACHE_FLASH_ATTR sd_read_sector(uint32_t start_block, uint8_t *buffer, uint
         do {
             response = sd_read_byte();
             count++;
-            if(count > 1024) {
+            if(count > 4096) {
                 sd_release();
                 os_printf("sd_read_sector: Timeout waiting for data ready. (%s:%u)\n", __FILE__, __LINE__);
                 return 0;
@@ -283,7 +283,7 @@ int ICACHE_FLASH_ATTR sd_write_sector(uint32_t start_block, uint8_t *buffer, uin
     while (sector_count--) {
         count = 0;
         do {
-            response = sd_send_cmd(CMD24, start_block, 0x00, NULL);
+            response = sd_send_cmd(CMD24, start_block++, 0x00, NULL);
             count++;
             if(count > 200) {
                 sd_release();
@@ -292,35 +292,33 @@ int ICACHE_FLASH_ATTR sd_write_sector(uint32_t start_block, uint8_t *buffer, uin
             }
         } while(response != R1_READY_STATE);
 
-        if(response == 0x00) {
-            sd_write_byte(0xFF);
-            sd_write_byte(0xFF);
-            sd_write_byte(0xFF);
-            sd_write_byte(DATA_START_BLOCK);
-            for(count = 0; count < 512; count++){
-                sd_write_byte(*(buffer + count));
-            }
-            buffer += 512;
-            sd_write_byte(0xFF);
-            sd_write_byte(0xFF);
+        sd_write_byte(0xFF);
+        sd_write_byte(0xFF);
+        sd_write_byte(0xFF);
+
+        sd_write_byte(DATA_START_BLOCK);
+        for (count = 0; count < 512; count++) {
+            sd_write_byte(*(buffer++));
+        }
+        sd_write_byte(0xFF);
+        sd_write_byte(0xFF);
+        response = sd_read_byte();
+        if ((response & DATA_RES_MASK) != DATA_RES_ACCEPTED) {
+            sd_release();
+            os_printf("sd_write_sector: Data rejected 0x%x. (%s:%u)\n", response, __FILE__, __LINE__);
+            return 0;
+        }
+
+        count = 0;
+        do {
             response = sd_read_byte();
-            if((response & 0x1F) != DATA_RES_ACCEPTED) {
+            count++;
+            if (count > 65535) {
+                os_printf("sd_write_sector: Timeout waiting for data write complete. (%s:%u)\n", __FILE__, __LINE__);
                 sd_release();
-                os_printf("sd_write_sector: Data rejected 0x%x. (%s:%u)\n", response, __FILE__, __LINE__);
                 return 0;
             }
-
-            count = 0;
-            do {
-                response = sd_read_byte();
-                count++;
-                if(count > 65535) {
-                    os_printf("sd_write_sector: Timeout waiting for data write complete. (%s:%u)\n", __FILE__, __LINE__);
-                    sd_release();
-                    return 0;
-                }
-            } while(response != 0xFF);
-        }
+        } while (response != 0xFF);
     }
     sd_release();
     return 1;
