@@ -32,13 +32,24 @@ typedef void (* TplCallback)(HttpdConnData *connData, char *token, void **arg);
 
 HttpdBuiltInUrl builtInUrls[] = {
         {"/", cgiRedirect, "/index.html"},
-//        {"/upload/*", cgi_upload, &upload_params},
         {"/user_ota_file", cgi_user_ota_file, NULL},
         {"/upload/*", cgi_upload, NULL},
         {"/list", cgi_list, NULL},
-//		{"/scripts.js", cgi_response, NULL},
         {"*", cgi_response, NULL},
         {NULL, NULL, NULL}
+};
+
+static char *user_ota_file[] = {
+        "",                         /* SPI_FLASH_SIZE_MAP 0   512KB  (256KB+ 256KB)    0x41000  */
+        "",
+        "userX.1024.new.2.bin",     /* SPI_FLASH_SIZE_MAP 2   1024KB (512KB+ 512KB)    0x81000  */
+        "userX.2048.new.3.bin",     /* SPI_FLASH_SIZE_MAP 3   2048KB (512KB+ 512KB)    0x81000  */
+        "userX.4096.new.4.bin",     /* SPI_FLASH_SIZE_MAP 4   4096KB (512KB+ 512KB)    0x81000  */
+        "userX.2048.new.5.bin",     /* SPI_FLASH_SIZE_MAP 5   2048KB (1024KB+1024KB)   0x101000 */
+        "userX.4096.new.6.bin",     /* SPI_FLASH_SIZE_MAP 6   4096KB (1024KB+1024KB)   0x101000 */
+        "",
+        "userX.8192.new.8.bin",     /* SPI_FLASH_SIZE_MAP 8   8192KB (1024KB+1024KB)   0x101000 */
+        "userX.16384.new.9.bin"     /* SPI_FLASH_SIZE_MAP 9   16384KB(1024KB+1024KB)   0x101000 */
 };
 
 typedef struct {
@@ -631,3 +642,7 @@ int ICACHE_FLASH_ATTR cgi_upload(HttpdConnData *connData) {
     return HTTPD_CGI_MORE;
 }
 
+int cgi_user_ota_file(HttpdConnData *connData) {
+
+    return HTTPD_CGI_DONE;
+}
