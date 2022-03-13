@@ -88,11 +88,7 @@ async function get_ota_filename() {
         var response = await fetch("get_ota_filename");
         if (response.ok) {
             var data = await response.json();
-//            var ota_filename = document.getElementById("ota_filename");
-//            ota_filename.value = data.ota_filename;
-    		var output = document.getElementById("ota_filename");
-    		output.innerHTML = data.ota_filename;
-            print_speed(slider.value);
+    		document.getElementById("ota_filename").innerHTML = data.ota_filename;
         } else {
             var error = await response.text();
             var message = `${error}. HTTP error ${response.status}.`;
