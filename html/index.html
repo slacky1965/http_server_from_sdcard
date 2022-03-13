@@ -9,7 +9,7 @@
 </head>
 <body>
     <div id="main">
-        <p>Please upload firmware image <span id="ota_filename></span> file</p>
+        <p>Please upload firmware image "<span id="ota_filename"></span>" file</p>
         <input id="newbinfile" type="file" onchange="setFileName(this)">
         <button id="uploadbin" type="button" onclick="upload(this)">Update</button>
         <p>Please upload html file</p>
@@ -19,6 +19,7 @@
         <br /><br />
         <span id="uploading"></span>
     </div>
-    <script src="/scripts.js ">get_ota_filename()</script>
+    <script src="/scripts.js "></script>
+	<script>get_ota_filename()</script>
 </body>
 </html>
