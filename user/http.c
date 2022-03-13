@@ -31,7 +31,7 @@ typedef void (* TplCallback)(HttpdConnData *connData, char *token, void **arg);
 
 HttpdBuiltInUrl builtInUrls[] = {
         {"/", cgiRedirect, "/index.html"},
-        {"/user_ota_file", cgi_user_ota_file, NULL},
+        {"/get_ota_filename", cgi_get_user_ota_filename, NULL},
         {"/upload/*", cgi_upload, NULL},
         {"/list", cgi_list, NULL},
         {"*", cgi_response, NULL},
@@ -408,14 +408,15 @@ static int httpd_ota_update(HttpdConnData *connData) {
 
     spi_flash_write(*address, (uint32*)data, data_len);
 
+    *address += data_len;
+
     if (last_buff[0] != 0) {
-        spi_flash_write((*address)+data_len, (uint32*)last_buff, sizeof(last_buff));
+        spi_flash_write(*address, (uint32*)last_buff, sizeof(last_buff));
         *address += sizeof(last_buff);
     }
 
     ets_intr_unlock();
 
-    *address += data_len;
 
     if (connData->post->len == connData->post->received) {
         //We're done! Format a response.
@@ -641,7 +642,26 @@ int ICACHE_FLASH_ATTR cgi_upload(HttpdConnData *connData) {
     return HTTPD_CGI_MORE;
 }
 
-int cgi_user_ota_file(HttpdConnData *connData) {
+int cgi_get_user_ota_filename(HttpdConnData *connData) {
+
+    char msg[32];
+
+    if (connData->conn==NULL) {
+        //Connection aborted. Clean up.
+        return HTTPD_CGI_DONE;
+    }
+
+    if (system_upgrade_userbin_check() == 1) {
+        user_ota_file[SPI_FLASH_SIZE_MAP][4] = '1';
+    } else {
+        user_ota_file[SPI_FLASH_SIZE_MAP][4] = '2';
+    }
+
+    httpdStartResponse(connData, 200);
+    httpdHeader(connData, "Content-Type", "application/json");
+    httpdEndHeaders(connData);
+    os_sprintf(msg, "{\"ota_filename\": %s}", user_ota_file[SPI_FLASH_SIZE_MAP]);
+    httpdSend(connData, msg, strlen(msg));
 
     return HTTPD_CGI_DONE;
 }
