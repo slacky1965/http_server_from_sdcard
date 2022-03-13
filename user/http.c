@@ -364,10 +364,12 @@ static int httpd_ota_update(HttpdConnData *connData) {
         connData->cgiData = address;
 
         if (system_upgrade_userbin_check() == 1) {
-            os_printf("Flashing user1.bin\n");
+            user_ota_file[SPI_FLASH_SIZE_MAP][4] = '1';
+            os_printf("Flashing %s\n", user_ota_file[SPI_FLASH_SIZE_MAP]);
             *address = 0x1000;
         } else {
-            os_printf("Flashing user2.bin\n");
+            user_ota_file[SPI_FLASH_SIZE_MAP][4] = '2';
+            os_printf("Flashing %s\n", user_ota_file[SPI_FLASH_SIZE_MAP]);
             *address = FIRMWARE_POS;
         }
 
@@ -660,7 +662,7 @@ int cgi_get_user_ota_filename(HttpdConnData *connData) {
     httpdStartResponse(connData, 200);
     httpdHeader(connData, "Content-Type", "application/json");
     httpdEndHeaders(connData);
-    os_sprintf(msg, "{\"ota_filename\": %s}", user_ota_file[SPI_FLASH_SIZE_MAP]);
+    os_sprintf(msg, "{\"ota_filename\": \"%s\"}", user_ota_file[SPI_FLASH_SIZE_MAP]);
     httpdSend(connData, msg, strlen(msg));
 
     return HTTPD_CGI_DONE;
