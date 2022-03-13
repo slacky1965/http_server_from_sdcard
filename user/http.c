@@ -12,7 +12,6 @@
 #include "wifi.h"
 #include "platform.h"
 #include "httpd.h"
-#include "cgiflash.h"
 #include "http.h"
 
 
