@@ -1,4 +1,3 @@
-#include <stdlib.h>
 #include "osapi.h"
 #include "user_interface.h"
 #include "mem.h"
@@ -8,8 +7,8 @@
 #include "appdef.h"
 #include "sdcard.h"
 #include "utils.h"
-#include "ff.h"
 #include "wifi.h"
+//#include "esp8266.h"
 #include "platform.h"
 #include "httpd.h"
 #include "http.h"
@@ -69,6 +68,7 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
 
     char buff[512];
     char spaces[16];
+    char *err = NULL;
     FILINFO f_info;
     FRESULT ret;
     size_t len, total_len;
@@ -92,12 +92,18 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
         //First call to this cgi. Open the file so we can read it.
         dir_data = malloc(sizeof(dir_data_t));
         if (dir_data == NULL) {
-            return HTTPD_CGI_NOTFOUND;
+            err = "Error allocation memory";
+            os_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
+            httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, err);
+            return HTTPD_CGI_DONE;
         }
         ret = f_opendir(&(dir_data->dir), HTML_PATH);
         if (ret != FR_OK) {
+            err = "Failed to open dir \"", HTML_PATH, "\"";
+            os_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
+            httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, err);
             free(dir_data);
-            return HTTPD_CGI_NOTFOUND;
+            return HTTPD_CGI_DONE;
         }
         dir_data->gl_len = 0;
         connData->cgiData=dir_data;
@@ -324,8 +330,8 @@ static bool ICACHE_FLASH_ATTR check_bin_header(void *buf, uint32_t address) {
 static int httpd_ota_update(HttpdConnData *connData) {
 
     char *err = NULL;
-    bool lastBuff = false;
-    char last_buff[4] = {0};
+    char buff[256], last_buff[4] = {0};
+    char *name;
 
     size_t *address = (size_t*)connData->cgiData;
 
@@ -342,11 +348,19 @@ static int httpd_ota_update(HttpdConnData *connData) {
     if (address == NULL) {
         os_printf("Firmware upload start.\n");
 
-        if (connData->post->len > FIRMWARE_SIZE) {
-            err = "Firmware image too large";
+        name = strrchr (connData->url, '/');
+        if (name) {
+            name++;
+            if (strlen(name) == 0) {
+                err = "Empty uploading file name";
+                os_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
+                httpdSendErr(connData, HTTPD_400_BAD_REQUEST, err);
+                return HTTPD_CGI_DONE;
+            }
         }
 
-        if (err) {
+        if (connData->post->len > FIRMWARE_SIZE) {
+            err = "Firmware image too large";
             os_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
             httpdSendErr(connData, HTTPD_400_BAD_REQUEST, err);
             return HTTPD_CGI_DONE;
@@ -360,23 +374,34 @@ static int httpd_ota_update(HttpdConnData *connData) {
             return HTTPD_CGI_DONE;
         }
 
-        memset(address, 0, sizeof(size_t));
+        *address = 0;
         connData->cgiData = address;
 
         if (system_upgrade_userbin_check() == 1) {
+            /* file name must be user1 */
             user_ota_file[SPI_FLASH_SIZE_MAP][4] = '1';
             os_printf("Flashing %s\n", user_ota_file[SPI_FLASH_SIZE_MAP]);
             *address = 0x1000;
         } else {
+            /* file name must be user2 */
             user_ota_file[SPI_FLASH_SIZE_MAP][4] = '2';
             os_printf("Flashing %s\n", user_ota_file[SPI_FLASH_SIZE_MAP]);
             *address = FIRMWARE_POS;
+        }
+
+        if (strcasecmp(name, user_ota_file[SPI_FLASH_SIZE_MAP]) != 0) {
+            err = "Invalid file name!";
+            os_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
+            httpdSendErr(connData, HTTPD_400_BAD_REQUEST, err);
+            free(address);
+            return HTTPD_CGI_DONE;
         }
 
         if (!check_bin_header(data, *address)) {
             err = "Invalid flash image type!";
             os_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
             httpdSendErr(connData, HTTPD_400_BAD_REQUEST, err);
+            free(address);
             return HTTPD_CGI_DONE;
         }
 
@@ -421,12 +446,14 @@ static int httpd_ota_update(HttpdConnData *connData) {
 
 
     if (connData->post->len == connData->post->received) {
-        //We're done! Format a response.
         os_printf("Upload done. Sending response.\n");
         httpdStartResponse(connData, 200);
         httpdHeader(connData, "Content-Type", "text/plain");
         httpdEndHeaders(connData);
-        httpdSend(connData, "Upload done! Rebooting ...\n", -1);
+        name = strrchr (connData->url, '/');
+        if (name) name++;
+        os_sprintf(buff, "File `%s` %d bytes uploaded successfully.\nRestart system...\n", name, connData->post->received);
+        httpdSend(connData, buff, strlen(buff));
         free(address);
 
         os_timer_disarm(&resetTimer);
@@ -478,6 +505,14 @@ static int ICACHE_FLASH_ATTR httpd_html_upload(HttpdConnData *connData, const ch
             return HTTPD_CGI_DONE;
         }
 
+        if (connData->post->buffLen == 0) {
+            err = "File empty";
+            os_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
+            httpdSendErr(connData, HTTPD_400_BAD_REQUEST, err);
+            return HTTPD_CGI_DONE;
+        }
+
+
         html_data = malloc(sizeof(html_data_t));
         if (html_data == NULL) {
             err = "Error allocation memory";
@@ -522,20 +557,17 @@ static int ICACHE_FLASH_ATTR httpd_html_upload(HttpdConnData *connData, const ch
     size_t len = 0;
     ret = f_write(&(html_data->file), connData->post->buff, connData->post->buffLen, &len);
 
-//    for (int i = 0; i < connData->post->buffLen; i++) {
-//        os_printf("%c", connData->post->buff[i]);
-//    }
-
-//    if (ret != FR_OK) {
-//        free(html_data->name);
-//        free(html_data->tmp_name);
-//        free(html_data);
-//        err = "Failed to write file to SD card";
-//        os_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
-//        /* Respond with 500 Internal Server Error */
-//        httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, err);
-//        return HTTPD_CGI_DONE;
-//    }
+    if (ret != FR_OK) {
+        f_close(&(html_data->file));
+        free(html_data->name);
+        free(html_data->tmp_name);
+        free(html_data);
+        err = "Failed to write file to SD card";
+        os_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
+        /* Respond with 500 Internal Server Error */
+        httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, err);
+        return HTTPD_CGI_DONE;
+    }
 
     if (len > 0) {
         if (connData->post->len == connData->post->received) {
@@ -565,7 +597,7 @@ static int ICACHE_FLASH_ATTR httpd_html_upload(HttpdConnData *connData, const ch
             httpdHeader(connData, "Content-Type", "text/plain");
             httpdEndHeaders(connData);
 
-            name = strrchr (full_name, '/');
+            name = strrchr (connData->url, '/');
             if (name) name++;
             os_sprintf(buff, "File `%s` %d bytes uploaded successfully.", name?name:full_name, connData->post->len);
             httpdSend(connData, buff, strlen(buff));
