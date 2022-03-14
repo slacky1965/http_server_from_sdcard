@@ -9,6 +9,7 @@
 #define log_print(fmt, ...) os_printf(fmt, ##__VA_ARGS__)
 #endif
 
-extern int ets_uart_printf(const char *fmt, ...);
+int ets_uart_printf(const char *fmt, ...);
+int strcasecmp(const char *a, const char *b);
 
 #endif
