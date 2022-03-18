@@ -26,7 +26,7 @@ async function upload(elem) {
         alert("No file selected!");
     } else {
         var file = fileInput[0];
-
+// 
         document.getElementById("uploading").innerHTML = "Uploading! Please wait.";
         
         document.getElementById("uploadbin").disabled = true;
@@ -100,3 +100,54 @@ async function get_ota_filename() {
     }
 }
 
+async function files_delete() {
+    var del = false;
+    var del_files = {"Files": []}; 
+    var checkbox=document.getElementsByTagName('input');
+    for (var i = 0; i < checkbox.length; i++) {
+        if (checkbox[i].type == "checkbox") {
+            if (checkbox[i].checked == true) {
+                del_files.Files.push(checkbox[i].value);
+                del = true;
+            }
+        }
+    }
+	
+    if (del) {
+        var delete_url = "delete";
+        var json = JSON.stringify(del_files);
+        var buff_len = 2048;
+        if (json.length > buff_len) {
+            let message = `The inline buffer is full (${json.length} > ${buff_len}), you need to reduce the number of deleted files`
+            alert(message);
+            return;
+        }
+    
+        try {
+            var response = await fetch(delete_url, {
+                method: 'POST',
+                headers: {
+                    "Content-Type": "application/json; charset=utf-8"
+                },
+                body: json
+            });
+            if (response.ok) {
+                var data = await response.text();
+                alert(data);
+                location.reload();
+            } else {
+                var error = await response.text();
+                var message = `${error}. HTTP error ${response.status}.`;
+                alert(message);
+            }
+
+        }
+        catch (error) {
+            alert(`Error! ${error}`);
+        }
+
+	} else {
+        alert(`Select the files to be deleted`);        
+    }
+	
+}
