@@ -26,13 +26,26 @@ char* ICACHE_FLASH_ATTR get_mac_address(uint8_t if_index) {
     return buff;
 }
 
-size_t get_sd_free_space() {
+uint32_t ICACHE_FLASH_ATTR get_sd_free_space(uint32_t *total) {
     FATFS *fs;
-    size_t fre_clust;
-
-    f_getfree("", &fre_clust, &fs);
+    DWORD free_clust, free_size, total_size;
 
 
-    return ((fre_clust * fs->csize) / 2);
+    /* Get volume information and free clusters of drive 1 */
+    if (f_getfree("", &free_clust, &fs) != FR_OK) {
+        os_printf("f_getfree return error\n");
+        return 0;
+    }
+
+    /* Get total sectors and free sectors */
+    total_size = (fs->n_fatent - 2) * fs->csize / 2;
+    free_size = free_clust * fs->csize / 2;
+
+    /* Print the free space (assuming 512 bytes/sector) */
+//    os_printf("%10lu KiB total drive space.\n%10lu KiB available.\n", total_size, free_size);
+
+    if(total) *total = total_size;
+
+    return free_size;
 }
 

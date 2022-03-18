@@ -10,9 +10,12 @@
 #include "ff.h"			/* Obtains integer types */
 #include "diskio.h"		/* Declarations of disk functions */
 
-extern int sd_read_sector(uint32_t start_block, uint8_t *buffer, uint32_t sector_count);
-extern int sd_write_sector(uint32_t start_block, uint8_t *buffer, uint32_t sector_count);
-extern bool get_sdcard_status();
+int sd_read_sector(uint32_t start_block, uint8_t *buffer, uint32_t sector_count);
+int sd_write_sector(uint32_t start_block, uint8_t *buffer, uint32_t sector_count);
+bool get_sdcard_status();
+//uint64_t sd_get_capacity();
+//uint32_t sd_get_sector_size();
+
 
 /* Definitions of physical drive number for each drive */
 #define DEV_RAM		0	/* Example: Map Ramdisk to physical drive 0 */
@@ -102,6 +105,37 @@ DRESULT ICACHE_FLASH_ATTR disk_ioctl (
 	void *buff		/* Buffer to send/receive control data */
 )
 {
+
+
+//    DRESULT res = RES_PARERR;
+//
+//    switch(cmd) {
+//        case CTRL_SYNC:
+//            res = RES_OK;
+//            break;
+//        case GET_SECTOR_COUNT:
+//            *(DWORD*)buff = (uint32_t)(sd_get_capacity()/sd_get_sector_size());
+//            res = RES_OK;
+//            break;
+//        case GET_SECTOR_SIZE:
+//            *(DWORD*)buff = sd_get_sector_size();
+//            res = RES_OK;
+//            break;
+//        case GET_BLOCK_SIZE:
+//            *(DWORD*)buff = 1;
+//            res = RES_OK;
+//            break;
+//        case CTRL_TRIM:
+//            res = RES_OK;
+//            break;
+//        default:
+//            break;
+//    }
+//
+//    return res;
+//
+//    return RES_PARERR;
+
     if(cmd == CTRL_SYNC) {
         return RES_OK;
     } else {

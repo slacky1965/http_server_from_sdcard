@@ -26,11 +26,11 @@ typedef enum {
 /* Prototypes for disk control functions */
 
 
-DSTATUS ICACHE_FLASH_ATTR disk_initialize (BYTE pdrv);
-DSTATUS ICACHE_FLASH_ATTR disk_status (BYTE pdrv);
-DRESULT ICACHE_FLASH_ATTR disk_read (BYTE pdrv, BYTE* buff, LBA_t sector, UINT count);
-DRESULT ICACHE_FLASH_ATTR disk_write (BYTE pdrv, const BYTE* buff, LBA_t sector, UINT count);
-DRESULT ICACHE_FLASH_ATTR disk_ioctl (BYTE pdrv, BYTE cmd, void* buff);
+DSTATUS disk_initialize (BYTE pdrv);
+DSTATUS disk_status (BYTE pdrv);
+DRESULT disk_read (BYTE pdrv, BYTE* buff, LBA_t sector, UINT count);
+DRESULT disk_write (BYTE pdrv, const BYTE* buff, LBA_t sector, UINT count);
+DRESULT disk_ioctl (BYTE pdrv, BYTE cmd, void* buff);
 
 
 /* Disk Status Bits (DSTATUS) */

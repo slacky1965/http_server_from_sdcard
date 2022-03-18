@@ -87,17 +87,12 @@ void ICACHE_FLASH_ATTR user_init(void) {
     uart_init(BIT_RATE_115200, BIT_RATE_115200);
     os_delay_us(65535);
 
-	if (sd_init() == SD_CARD_INIT_OK) {
-	    log_print("sd card init ok\n");
-	    f_mount(&FatFs, "", 0);
-
-//	    print_directory("/html");
-
-	}
+	sd_init();
+	f_mount(&FatFs, "", 0);
 
 	start_wifi_sta();
 	httpdInit(builtInUrls, 80);
-    log_print("TestTestTest\n");
+//    log_print("TestTestTest\n");
 
 }
 
