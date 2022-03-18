@@ -3,12 +3,15 @@
 
 #define OTA_BUF_LEN 512
 #define HTML_PATH "/html"
+#define JSON_DEL_FILES_ARRAY_NAME "Files"
 
 extern HttpdBuiltInUrl builtInUrls[];
 
-int ICACHE_FLASH_ATTR cgi_upload(HttpdConnData *connData);
-int ICACHE_FLASH_ATTR cgi_response(HttpdConnData *connData);
-int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData);
-int ICACHE_FLASH_ATTR cgi_get_user_ota_filename(HttpdConnData *connData);
+int tpl_token(HttpdConnData *connData, char *token, void **arg);
+int cgi_upload(HttpdConnData *connData);
+int cgi_response(HttpdConnData *connData);
+int cgi_list(HttpdConnData *connData);
+int cgi_delete(HttpdConnData *connData);
+int cgi_get_user_ota_filename(HttpdConnData *connData);
 
 #endif /* USER_INCLUDE_HTTP_H_ */
