@@ -72,29 +72,46 @@
 /** Set 30-th bit for check Card Capacity Status - CCS **/
 #define CCS (1 << 30)
 //------------------------------------------------------------------------------
-
+#define CSD_VER1    0x00
+#define CSD_VER2    0x01
+#define CSD_VER3    0x02
+#define CSD_SIZE    0x10
+//------------------------------------------------------------------------------
 
 typedef enum {
-    SD_CARD_INIT_OK = 0,
-    SD_CARD_INIT_GPIO_OK = 0,
-    SD_CARD_ERROR_IO,
-    SD_CARD_ERROR_NOT_SUPPORT,
-    SD_CARD_ERROR_COMMAND_EXECUTE,
-    SD_CARD_ERROR_TIMEOUT,
-    SD_CARD_ERROR_ALLOCATE,
-    SD_CARD_ERROR_INIT,
-    SD_CARD_ERROR_INIT_GPIO
-} sdcard_init_err_t;
+    SD_CARD_OK = 0,
+    SD_CARD_ERROR_INIT          = 0x01,
+    SD_CARD_ERROR_READ          = 0x02,
+    SD_CARD_ERROR_WRITE         = 0x04,
+    SD_CARD_ERROR_TIMEOUT       = 0x08,
+    SD_CARD_ERROR_INIT_GPIO     = 0x10,
+    SD_CARD_ERROR_ALLOCATE      = 0x20,
+    SD_CARD_ERROR_NOT_SUPPORT   = 0x40,
+    SD_CARD_ERROR_CMD_EXECUTE   = 0x80
+} sdcard_err_t;
 
 typedef enum {
     SD_CARD_TYPE_SD1SC = 1,
     SD_CARD_TYPE_SD2SC,
-    SD_CARD_TYPE_SD2HC
+    SD_CARD_TYPE_SD2HC,
+    SD_CARD_TYPE_SD3UC,
+    SD_CARD_TYPE_MAX
 } sdcard_type_t;
 
-sdcard_init_err_t sd_init();
+typedef struct {
+    uint8_t         csd_version;
+    sdcard_type_t   type;
+    uint64_t        capacity;
+    uint32_t        sector_size;
+    bool            sdcard_init;
+    sdcard_err_t    sdcard_err;
+} sdcard_t;
+
+sdcard_err_t sd_init();
 int sd_read_sector(uint32_t start_block, uint8_t *buffer, uint32_t sector_count);
 int sd_write_sector(uint32_t start_block, uint8_t *buffer, uint32_t sector_count);
 bool get_sdcard_status();
+uint64_t sd_get_capacity();
+uint32_t sd_get_sector_size();
 
 #endif /* USER_INCLUDE_SDCARD_H_ */
