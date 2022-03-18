@@ -68,7 +68,7 @@ async function listing() {
         });
         if (response.ok) {
             var data = await response.text();
-            document.getElementById("listing").innerHTML = data;
+            document.getElementById("listing").innerHTML = data + "\n<input type=\"button\" id=\"files_delete\" value=\"Delete\" onclick=\"files_delete()\">\n";
         } else {
             var error = await response.text();
             var message = `${error}. HTTP error ${response.status}.`;
