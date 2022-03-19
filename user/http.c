@@ -63,7 +63,6 @@ typedef struct {
 int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
 
     char buff[512];
-    char spaces[12];
     char *err = NULL;
     FILINFO f_info;
     FRESULT ret;
@@ -115,18 +114,8 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
 
 
     if (f_readdir(&(dir_data->dir), &f_info) == FR_OK && f_info.fname[0]) {
-        os_sprintf(buff, "%u", f_info.fsize);
-        size_t len_spaces = sizeof(spaces)-1;
-        size_t len_size = strlen(buff);
-        os_memset(spaces, ' ', len_spaces);
-        spaces[len_spaces] = 0;
-        if (len_size < len_spaces) {
-            os_strcpy(spaces+(len_spaces-len_size), buff);
-        } else {
-            os_strncpy(spaces, buff, len_spaces);
-        }
-        os_sprintf(buff, "<input type=\"checkbox\" name=\"file%d\" value=\"%s\"> %s    %s\n",
-                   dir_data->count_files++, f_info.fname, spaces, f_info.fname);
+        os_sprintf(buff, "<input type=\"checkbox\" name=\"file%d\" value=\"%s\"> %11lu    %s\n",
+                   dir_data->count_files++, f_info.fname, f_info.fsize, f_info.fname);
         dir_data->gl_len += f_info.fsize;
         httpdSend(connData, buff, strlen(buff));
         return HTTPD_CGI_MORE;
@@ -139,9 +128,8 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
 
     free_size = get_sd_free_space(&total_size);
 
-    os_sprintf(buff, "\nUsed %lu\t  kBytes\nFree %lu\t  kBytes\n", total_size-free_size, free_size);
+    os_sprintf(buff, "\nUsed %9lu    kBytes\nFree %9lu    kBytes\n", total_size-free_size, free_size);
     httpdSend(connData, buff, strlen(buff));
-//    httpdSend(connData, "\n<input type=\"button\" id=\"files_delete\" value=\"Delete\" onclick=\"files_delete()\">\n", -1);
 
     return HTTPD_CGI_DONE;
 }
