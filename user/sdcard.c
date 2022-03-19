@@ -155,7 +155,7 @@ static void ICACHE_FLASH_ATTR sd_select() {
 
 static void ICACHE_FLASH_ATTR sd_csd_read() {
     uint8_t response_r1;
-    uint32_t response_not_r1, count;
+    uint32_t count;
 
     sd_select();
 
