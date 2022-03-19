@@ -10,7 +10,6 @@ static os_timer_t sta_timer;
 static void ICACHE_FLASH_ATTR sta_timer_cb() {
 
     struct scan_config scanSt;
-    int i;
 
     os_timer_disarm(&sta_timer);
 
