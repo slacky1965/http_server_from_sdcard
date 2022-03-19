@@ -114,7 +114,7 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
 
 
     if (f_readdir(&(dir_data->dir), &f_info) == FR_OK && f_info.fname[0]) {
-        os_sprintf(buff, "<input type=\"checkbox\" name=\"file%d\" value=\"%s\"> %11lu    %s\n",
+        os_sprintf(buff, "<input type=\"checkbox\" name=\"file%d\" value=\"%s\"> %11u    %s\n",
                    dir_data->count_files++, f_info.fname, f_info.fsize, f_info.fname);
         dir_data->gl_len += f_info.fsize;
         httpdSend(connData, buff, strlen(buff));
@@ -128,7 +128,7 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
 
     free_size = get_sd_free_space(&total_size);
 
-    os_sprintf(buff, "\nUsed %9lu    kBytes\nFree %9lu    kBytes\n", total_size-free_size, free_size);
+    os_sprintf(buff, "\nUsed %9u    kBytes\nFree %9u    kBytes\n", total_size-free_size, free_size);
     httpdSend(connData, buff, strlen(buff));
 
     return HTTPD_CGI_DONE;
@@ -339,7 +339,7 @@ int ICACHE_FLASH_ATTR cgi_response(HttpdConnData *connData) {
 }
 
 int ICACHE_FLASH_ATTR tpl_token(HttpdConnData *connData, char *token, void **arg) {
-	char buff[128], *tmp;
+	char buff[128];
 	if (token == NULL)
 		return HTTPD_CGI_DONE;
 
