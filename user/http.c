@@ -65,7 +65,6 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
     char buff[512];
     char *err = NULL;
     FILINFO f_info;
-    FRESULT ret;
 
     dir_data_t *dir_data = connData->cgiData;
 
@@ -93,19 +92,20 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
             httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, err);
             return HTTPD_CGI_DONE;
         }
-        ret = f_opendir(&(dir_data->dir), HTML_PATH);
-        if (ret != FR_OK) {
+
+        if (f_opendir(&(dir_data->dir), HTML_PATH) != FR_OK) {
             err = "Failed to open dir \"", HTML_PATH, "\"";
             httpd_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
             httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, err);
             free(dir_data);
             return HTTPD_CGI_DONE;
         }
+
         dir_data->gl_len = 0;
         dir_data->count_files = 0;
         connData->cgiData=dir_data;
         httpdStartResponse(connData, 200);
-        httpdHeader(connData, "Content-Type", "text/plain" /*httpdGetMimetype(connData->url)*/);
+        httpdHeader(connData, "Content-Type", /*"text/plain"*/ httpdGetMimetype(connData->url));
         httpdEndHeaders(connData);
         sprintf(buff, "\nDirectory: %s\n\n", HTML_PATH);
         httpdSend(connData, buff, strlen(buff));
