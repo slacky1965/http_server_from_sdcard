@@ -11,7 +11,7 @@ This example uses a modified `esp_http_server` component to implement the match 
 ## Usage
 
 * `cd /you/path/ESP8266_NONOS_SDK`
-* `git clone https://github.com/slacky1965/web_server_uploader_esp8266.git`
+* `git clone https://github.com/slacky1965/http_server_from_sdcard.git`
 * `cd web_server_uploader_esp8266`
 
 * Go to `project/user/include/wifi.h`
