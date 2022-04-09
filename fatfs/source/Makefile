@@ -12,8 +12,7 @@
 #     a generated lib/image xxx.a ()
 #
 ifndef PDIR
-SUBDIRS = source
-GEN_LIBS = libfs.a
+GEN_LIBS = libfatfs.a
 endif
 
 
@@ -39,7 +38,7 @@ endif
 # Required for each makefile to inherit from the parent
 #
 
-INCLUDES := $(INCLUDES) -I $(PDIR)source
+INCLUDES := $(INCLUDES) -I $(PDIR)include
 INCLUDES += -I ./ -I ./include
 PDIR := ../$(PDIR)
 sinclude $(PDIR)Makefile

@@ -10,6 +10,7 @@
 #include "platform.h"
 #include "httpd.h"
 #include "http.h"
+#include "fs.h"
 
 
 #if ((SPI_FLASH_SIZE_MAP == 0) || (SPI_FLASH_SIZE_MAP == 1))

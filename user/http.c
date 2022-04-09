@@ -12,6 +12,7 @@
 #include "platform.h"
 #include "httpd.h"
 #include "http.h"
+#include "fs.h"
 
 #define RW_BUFF_LEN 1024
 #define PATH_HTML   "/html/"
@@ -46,7 +47,7 @@ static char *user_ota_file[] = {
 };
 
 typedef struct {
-    FIL    file;
+    FILE  *file;
     char  *tmp_name;
     char  *name;
     void  *tpl_arg;
@@ -55,7 +56,7 @@ typedef struct {
 } html_data_t;
 
 typedef struct {
-    DIR    dir;
+    DIR    *dir;
     size_t gl_len;
     int count_files;
 } dir_data_t;
@@ -64,14 +65,14 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
 
     char buff[512];
     char *err = NULL;
-    FILINFO f_info;
+    struct dirent *de;
 
     dir_data_t *dir_data = connData->cgiData;
 
     if (connData->conn==NULL) {
         //Connection aborted. Clean up.
-        f_closedir(&(dir_data->dir));
-        free(dir_data);
+        closedir(dir_data->dir);
+        os_free(dir_data);
         return HTTPD_CGI_DONE;
     }
 
@@ -85,7 +86,7 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
             return HTTPD_CGI_DONE;
         }
 
-        dir_data = malloc(sizeof(dir_data_t));
+        dir_data = os_malloc(sizeof(dir_data_t));
         if (dir_data == NULL) {
             err = "Error allocation memory";
             httpd_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
@@ -93,11 +94,12 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
             return HTTPD_CGI_DONE;
         }
 
-        if (f_opendir(&(dir_data->dir), HTML_PATH) != FR_OK) {
+        dir_data->dir = opendir(HTML_PATH);
+        if (dir_data->dir == NULL) {
             err = "Failed to open dir \"", HTML_PATH, "\"";
             httpd_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
             httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, err);
-            free(dir_data);
+            os_free(dir_data);
             return HTTPD_CGI_DONE;
         }
 
@@ -113,16 +115,16 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
     }
 
 
-    if (f_readdir(&(dir_data->dir), &f_info) == FR_OK && f_info.fname[0]) {
+    if ((de = readdir(dir_data->dir))) {
         os_sprintf(buff, "<input type=\"checkbox\" name=\"file%d\" value=\"%s\"> %11u    %s\n",
-                   dir_data->count_files++, f_info.fname, f_info.fsize, f_info.fname);
-        dir_data->gl_len += f_info.fsize;
+                   dir_data->count_files++, de->d_name, de->finfo.fsize, de->d_name);
+        dir_data->gl_len += de->finfo.fsize;
         httpdSend(connData, buff, strlen(buff));
         return HTTPD_CGI_MORE;
     }
 
-    f_closedir(&(dir_data->dir));
-    free(dir_data);
+    closedir(dir_data->dir);
+    os_free(dir_data);
 
     uint32_t free_size, total_size;
 
@@ -134,10 +136,10 @@ int ICACHE_FLASH_ATTR cgi_list(HttpdConnData *connData) {
     return HTTPD_CGI_DONE;
 }
 
-FRESULT ICACHE_FLASH_ATTR httpd_html_delete(const char *file_name) {
+int ICACHE_FLASH_ATTR httpd_html_delete(const char *file_name) {
     char buff[FF_MAX_LFN+32];
     os_sprintf(buff, "%s/%s", HTML_PATH, file_name);
-    return f_unlink(buff);
+    return unlink(buff);
 }
 
 int ICACHE_FLASH_ATTR cgi_delete(HttpdConnData *connData) {
@@ -171,7 +173,7 @@ int ICACHE_FLASH_ATTR cgi_delete(HttpdConnData *connData) {
             case JSON_TYPE_STRING:
                 if (json_key) {
                     jsonparse_copy_value(&parser, buff, sizeof(buff));
-                    if (httpd_html_delete(buff) != FR_OK) {
+                    if (httpd_html_delete(buff) != 0) {
                         err = "File to delete fail";
                         httpd_printf("%s (%s). (%s:%u)\n", err, buff, __FILE__, __LINE__);
                         httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, err);
@@ -195,51 +197,50 @@ int ICACHE_FLASH_ATTR httpd_response_with_tpl(HttpdConnData *connData) {
     char buff[RW_BUFF_LEN + 1];
     size_t len = 0, x, sp = 0;
     char *e=NULL, *err = NULL;
-    FRESULT ret;
 
     html_data_t *html_data = connData->cgiData;
 
-    ret = f_read(&(html_data->file), buff, RW_BUFF_LEN, &len);
+    len = fread(buff, sizeof(uint8_t), RW_BUFF_LEN, html_data->file);
 
-    if (ret != FR_OK) {
+    if (len == 0) {
         err = "Failed to read file";
         httpd_printf("%s '%s' from SD card. (%s:%u)\n", err, connData->url+1, __FILE__, __LINE__);
         httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, err);
         return HTTPD_CGI_DONE;
     }
 
-    if (len>0) {
-        sp=0;
-        e=buff;
-        for (x=0; x<len; x++) {
-            if (html_data->token_pos==-1) {
-                //Inside ordinary text.
-                if (buff[x]=='%') {
-                    //Send raw data up to now
-                    if (sp!=0) httpdSend(connData, e, sp);
-                    sp=0;
-                    //Go collect token chars.
-                    html_data->token_pos=0;
-                } else {
-                    sp++;
-                }
+    sp = 0;
+    e = buff;
+    for (x = 0; x < len; x++) {
+        if (html_data->token_pos == -1) {
+            //Inside ordinary text.
+            if (buff[x] == '%') {
+                //Send raw data up to now
+                if (sp != 0)
+                    httpdSend(connData, e, sp);
+                sp = 0;
+                //Go collect token chars.
+                html_data->token_pos = 0;
             } else {
-                if (buff[x]=='%') {
-                    if (html_data->token_pos==0) {
-                        //This is the second % of a %% escape string.
-                        //Send a single % and resume with the normal program flow.
-                        httpdSend(connData, "%", 1);
-                    } else {
-                        //This is an actual token.
-                        html_data->token[html_data->token_pos++]=0; //zero-terminate token
-                        ((TplCallback)(connData->cgiArg))(connData, html_data->token, &html_data->tpl_arg);
-                    }
-                    //Go collect normal chars again.
-                    e=&buff[x+1];
-                    html_data->token_pos=-1;
+                sp++;
+            }
+        } else {
+            if (buff[x] == '%') {
+                if (html_data->token_pos == 0) {
+                    //This is the second % of a %% escape string.
+                    //Send a single % and resume with the normal program flow.
+                    httpdSend(connData, "%", 1);
                 } else {
-                    if (html_data->token_pos<(sizeof(html_data->token)-1)) html_data->token[html_data->token_pos++]=buff[x];
+                    //This is an actual token.
+                    html_data->token[html_data->token_pos++] = 0; //zero-terminate token
+                    ((TplCallback) (connData->cgiArg))(connData, html_data->token, &html_data->tpl_arg);
                 }
+                //Go collect normal chars again.
+                e = &buff[x + 1];
+                html_data->token_pos = -1;
+            } else {
+                if (html_data->token_pos < (sizeof(html_data->token) - 1))
+                    html_data->token[html_data->token_pos++] = buff[x];
             }
         }
     }
@@ -248,8 +249,8 @@ int ICACHE_FLASH_ATTR httpd_response_with_tpl(HttpdConnData *connData) {
     if (len != RW_BUFF_LEN) {
         //We're done.
         ((TplCallback)(connData->cgiArg))(connData, NULL, &html_data->tpl_arg);
-        f_close(&(html_data->file));
-        free(html_data);
+        fclose(html_data->file);
+        os_free(html_data);
         return HTTPD_CGI_DONE;
     } else {
         //Ok, till next time.
@@ -261,52 +262,49 @@ int ICACHE_FLASH_ATTR httpd_response_with_tpl(HttpdConnData *connData) {
 int ICACHE_FLASH_ATTR httpd_response_without_tpl(HttpdConnData *connData) {
     char buff[RW_BUFF_LEN], *err = NULL;
     size_t len = 0;
-    FRESULT ret;
 
     html_data_t *html_data = connData->cgiData;
 
-    ret = f_read(&(html_data->file), buff, RW_BUFF_LEN, &len);
+    len = fread(buff, sizeof(uint8_t), RW_BUFF_LEN, html_data->file);
 
-    if (ret != FR_OK) {
+    if (len == 0) {
         err = "Failed to read file";
         httpd_printf("%s '%s' from SD card. (%s:%u)\n", err, connData->url+1, __FILE__, __LINE__);
         httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, err);
         return HTTPD_CGI_DONE;
     }
 
-    if (len > 0) {
-    	httpdSend(connData, buff, len);
+    httpdSend(connData, buff, len);
 
-    	if (len == RW_BUFF_LEN) {
-            return HTTPD_CGI_MORE;
-    	} else {
-            f_close(&(html_data->file));
-            free(html_data);
-            return HTTPD_CGI_DONE;
-    	}
+    if (len == RW_BUFF_LEN) {
+        return HTTPD_CGI_MORE;
+    } else {
+        fclose(html_data->file);
+        os_free(html_data);
+        return HTTPD_CGI_DONE;
     }
-    f_close(&(html_data->file));
-    free(html_data);
+
+    fclose(html_data->file);
+    os_free(html_data);
     return HTTPD_CGI_DONE;
 }
 
 int ICACHE_FLASH_ATTR cgi_response(HttpdConnData *connData) {
     char buff[256];
-    FRESULT ret;
     char *err = NULL;
 
     html_data_t *html_data = connData->cgiData;
 
     if (connData->conn==NULL) {
         //Connection aborted. Clean up.
-        f_close(&(html_data->file));
-        free(html_data);
+        fclose(html_data->file);
+        os_free(html_data);
         return HTTPD_CGI_DONE;
     }
 
     if (html_data == NULL) {
         //First call to this cgi. Open the file so we can read it.
-        html_data = malloc(sizeof(html_data_t));
+        html_data = os_malloc(sizeof(html_data_t));
         if (html_data == NULL) {
             err = "Error allocation memory";
             httpd_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
@@ -316,9 +314,9 @@ int ICACHE_FLASH_ATTR cgi_response(HttpdConnData *connData) {
         os_sprintf(buff, "%s%s", HTML_PATH, connData->url);
         html_data->tpl_arg=NULL;
         html_data->token_pos = -1;
-        ret = f_open(&(html_data->file), buff, FA_READ);
-        if (ret != FR_OK) {
-            free(html_data);
+        html_data->file = fopen(buff, "r");
+        if (html_data->file == NULL) {
+            os_free(html_data);
             err = "File not found";
             httpd_printf("%s: '%s'. (%s:%u)\n", err, connData->url+1, __FILE__, __LINE__);
             httpdSendErr(connData, HTTPD_404_NOT_FOUND, NULL);
@@ -388,7 +386,7 @@ static int ICACHE_FLASH_ATTR httpd_ota_update(HttpdConnData *connData) {
 
     if (connData->conn==NULL) {
         //Connection aborted. Clean up.
-        if (address != NULL) free(address);
+        if (address != NULL) os_free(address);
         return HTTPD_CGI_DONE;
     }
 
@@ -444,7 +442,7 @@ static int ICACHE_FLASH_ATTR httpd_ota_update(HttpdConnData *connData) {
             err = "Invalid file name!";
             httpd_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
             httpdSendErr(connData, HTTPD_400_BAD_REQUEST, err);
-            free(address);
+            os_free(address);
             return HTTPD_CGI_DONE;
         }
 
@@ -452,7 +450,7 @@ static int ICACHE_FLASH_ATTR httpd_ota_update(HttpdConnData *connData) {
             err = "Invalid flash image type!";
             httpd_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
             httpdSendErr(connData, HTTPD_400_BAD_REQUEST, err);
-            free(address);
+            os_free(address);
             return HTTPD_CGI_DONE;
         }
 
@@ -505,7 +503,7 @@ static int ICACHE_FLASH_ATTR httpd_ota_update(HttpdConnData *connData) {
         if (name) name++;
         os_sprintf(buff, "File `%s` %d bytes uploaded successfully.\nRestart system...\n", name, connData->post->received);
         httpdSend(connData, buff, strlen(buff));
-        free(address);
+        os_free(address);
 
         os_timer_disarm(&resetTimer);
         os_timer_setfn(&resetTimer, resetTimerCb, NULL);
@@ -520,7 +518,6 @@ static int ICACHE_FLASH_ATTR httpd_ota_update(HttpdConnData *connData) {
 }
 
 static int ICACHE_FLASH_ATTR httpd_html_upload(HttpdConnData *connData, const char *full_name) {
-    FRESULT ret;
     FILINFO finfo;
     char *name, buff[256], *err = NULL;
 
@@ -528,10 +525,10 @@ static int ICACHE_FLASH_ATTR httpd_html_upload(HttpdConnData *connData, const ch
 
     if (connData->conn==NULL) {
         //Connection aborted. Clean up.
-        f_close(&(html_data->file));
-        free(html_data->name);
-        free(html_data->tmp_name);
-        free(html_data);
+        fclose(html_data->file);
+        os_free(html_data->name);
+        os_free(html_data->tmp_name);
+        os_free(html_data);
         return HTTPD_CGI_DONE;
     }
 
@@ -565,7 +562,7 @@ static int ICACHE_FLASH_ATTR httpd_html_upload(HttpdConnData *connData, const ch
         }
 
 
-        html_data = malloc(sizeof(html_data_t));
+        html_data = os_malloc(sizeof(html_data_t));
         if (html_data == NULL) {
             err = "Error allocation memory";
             httpd_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
@@ -573,9 +570,9 @@ static int ICACHE_FLASH_ATTR httpd_html_upload(HttpdConnData *connData, const ch
             return HTTPD_CGI_DONE;
         }
 
-        html_data->name = malloc(strlen(full_name)+1);
+        html_data->name = os_malloc(strlen(full_name)+1);
         if (html_data->name == NULL) {
-            free(html_data);
+            os_free(html_data);
             err = "Error allocation memory";
             httpd_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
             httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, err);
@@ -583,21 +580,21 @@ static int ICACHE_FLASH_ATTR httpd_html_upload(HttpdConnData *connData, const ch
         }
         strcpy(html_data->name, full_name);
 
-        html_data->tmp_name = malloc(strlen(full_name)+5);
+        html_data->tmp_name = os_malloc(strlen(full_name)+5);
         if (html_data->tmp_name == NULL) {
-            free(html_data->name);
-            free(html_data);
+            os_free(html_data->name);
+            os_free(html_data);
             err = "Error allocation memory";
             httpd_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
             httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, err);
             return HTTPD_CGI_DONE;
         }
         sprintf(html_data->tmp_name, "%s.tmp", html_data->name);
-        ret = f_open(&(html_data->file), html_data->tmp_name, FA_WRITE|FA_CREATE_ALWAYS);
-        if (ret != FR_OK) {
-            free(html_data->name);
-            free(html_data->tmp_name);
-            free(html_data);
+        html_data->file = fopen(html_data->tmp_name, "w");
+        if (html_data->file == NULL) {
+            os_free(html_data->name);
+            os_free(html_data->tmp_name);
+            os_free(html_data);
             err = "Failed to create file";
             httpd_printf("%s \"%s\" (%s:%u)\n", err, html_data->tmp_name, __FILE__, __LINE__);
             httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, err);
@@ -606,14 +603,13 @@ static int ICACHE_FLASH_ATTR httpd_html_upload(HttpdConnData *connData, const ch
         connData->cgiData=html_data;
     }
 
-    size_t len = 0;
-    ret = f_write(&(html_data->file), connData->post->buff, connData->post->buffLen, &len);
+    size_t len = fwrite(connData->post->buff, sizeof(uint8_t), connData->post->buffLen, html_data->file);
 
-    if (ret != FR_OK) {
-        f_close(&(html_data->file));
-        free(html_data->name);
-        free(html_data->tmp_name);
-        free(html_data);
+    if (len == 0) {
+        fclose(html_data->file);
+        os_free(html_data->name);
+        os_free(html_data->tmp_name);
+        os_free(html_data);
         err = "Failed to write file to SD card";
         httpd_printf("%s. (%s:%u)\n", err, __FILE__, __LINE__);
         /* Respond with 500 Internal Server Error */
@@ -621,45 +617,41 @@ static int ICACHE_FLASH_ATTR httpd_html_upload(HttpdConnData *connData, const ch
         return HTTPD_CGI_DONE;
     }
 
-    if (len > 0) {
-        if (connData->post->len == connData->post->received) {
-            f_close(&(html_data->file));
+    if (connData->post->len == connData->post->received) {
+        fclose(html_data->file);
 
-            httpd_printf("File transferred finished: %d bytes\n", connData->post->len);
+        httpd_printf("File transferred finished: %d bytes\n", connData->post->len);
 
-            ret = f_stat(html_data->name, &finfo);
-
-            if (ret == FR_OK) {
-                f_unlink(html_data->name);
-            }
-
-            if (f_rename(html_data->tmp_name, html_data->name) != FR_OK) {
-                httpd_printf("File rename \"%s\" to \"%s\" failed. (%s:%u)\n", html_data->tmp_name,
-                                                                            html_data->name,
-                                                                            __FILE__, __LINE__);
-                httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to rename file");
-                free(html_data->name);
-                free(html_data->tmp_name);
-                free(html_data);
-                return HTTPD_CGI_DONE;
-            }
-
-
-            httpdStartResponse(connData, 200);
-            httpdHeader(connData, "Content-Type", "text/plain");
-            httpdEndHeaders(connData);
-
-            name = strrchr (connData->url, '/');
-            if (name) name++;
-            os_sprintf(buff, "File `%s` %d bytes uploaded successfully.", name?name:full_name, connData->post->len);
-            httpdSend(connData, buff, strlen(buff));
-
-            free(html_data->name);
-            free(html_data->tmp_name);
-            free(html_data);
-            return HTTPD_CGI_DONE;
-
+        if (stat(html_data->name, &finfo) == 0) {
+            unlink(html_data->name);
         }
+
+        if (rename(html_data->tmp_name, html_data->name) != 0) {
+            httpd_printf("File rename \"%s\" to \"%s\" failed. (%s:%u)\n",
+                          html_data->tmp_name, html_data->name, __FILE__, __LINE__);
+            httpdSendErr(connData, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to rename file");
+            os_free(html_data->name);
+            os_free(html_data->tmp_name);
+            os_free(html_data);
+            return HTTPD_CGI_DONE;
+        }
+
+        httpdStartResponse(connData, 200);
+        httpdHeader(connData, "Content-Type", "text/plain");
+        httpdEndHeaders(connData);
+
+        name = strrchr(connData->url, '/');
+        if (name)
+            name++;
+        os_sprintf(buff, "File `%s` %d bytes uploaded successfully.",
+                name ? name : full_name, connData->post->len);
+        httpdSend(connData, buff, strlen(buff));
+
+        os_free(html_data->name);
+        os_free(html_data->tmp_name);
+        os_free(html_data);
+        return HTTPD_CGI_DONE;
+
     }
 
     return HTTPD_CGI_MORE;

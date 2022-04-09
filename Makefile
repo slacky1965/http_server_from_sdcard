@@ -72,9 +72,11 @@ ifeq ($(FLAVOR),release)
 endif
 
 COMPONENTS_eagle.app.v6 = \
-	fatfs/libfatfs.a \
+	fatfs/source/libfatfs.a \
+	fatfs/libfs.a \
 	libesphttpd/core/libesphttpd.a \
 	user/libuser.a
+
 
 LINKFLAGS_eagle.app.v6 = \
 	-L../lib        \
@@ -147,7 +149,7 @@ DDEFINES +=				\
 # Required for each makefile to inherit from the parent
 #
 
-INCLUDES := $(INCLUDES) -I $(PDIR)include -I $(PDIR)fatfs/include -I $(PDIR)libesphttpd/include
+INCLUDES := $(INCLUDES) -I $(PDIR)include -I $(PDIR)fatfs -I $(PDIR)fatfs/source -I $(PDIR)libesphttpd/include
 
 PDIR := ../$(PDIR)
 sinclude $(PDIR)Makefile

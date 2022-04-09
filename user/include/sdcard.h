@@ -1,8 +1,6 @@
 #ifndef USER_INCLUDE_SDCARD_H_
 #define USER_INCLUDE_SDCARD_H_
 
-#include "ff.h"
-
 #define CS      15
 #define MOSI    13
 #define SCLK    14
