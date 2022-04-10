@@ -1,6 +1,7 @@
 #ifndef COMPONENTS_FATFS_FS_H_
 #define COMPONENTS_FATFS_FS_H_
 
+#include <sys/types.h>
 #include "ff.h"
 
 struct dirent {
@@ -56,8 +57,8 @@ struct ffblk {
     #define FA_ARCH   0x20
 #endif
 
-typedef int mode_t;
-typedef _off_t off_t;
+//typedef int mode_t;
+//typedef _off_t off_t;
 
 #define FILE                FIL
 #define opendir(a)          fs_opendir(a)
