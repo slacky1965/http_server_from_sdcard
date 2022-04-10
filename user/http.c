@@ -518,7 +518,7 @@ static int ICACHE_FLASH_ATTR httpd_ota_update(HttpdConnData *connData) {
 }
 
 static int ICACHE_FLASH_ATTR httpd_html_upload(HttpdConnData *connData, const char *full_name) {
-    FILINFO finfo;
+    STAT finfo;
     char *name, buff[256], *err = NULL;
 
     html_data_t *html_data = connData->cgiData;
