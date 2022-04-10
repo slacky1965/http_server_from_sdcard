@@ -16,6 +16,8 @@ struct ffblk {
     FILINFO finfo;
 };
 
+#define STAT FILINFO
+
 #ifndef SEEK_CUR
     #define SEEK_CUR    1
 #endif
